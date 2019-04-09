@@ -5,7 +5,7 @@ TAG = 0.33
 HAPROXY_TAG = 0.1
 # Helm uses SemVer2 versioning
 CHART_VERSION = 0.2.0
-PREFIX = aledbf/kube-keepalived-vip
+PREFIX = daocloud.io/daocloud/kube-keepalived-vip
 BUILD_IMAGE = build-keepalived
 PKG = github.com/aledbf/kube-keepalived-vip
 
