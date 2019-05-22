@@ -37,7 +37,7 @@ func TestParseNsSvcLVS(t *testing.T) {
 	}
 
 	for k, tc := range testcases {
-		ns, svc, lvs, err := parseNsSvcLVS(tc.Input)
+		ns, svc, lvs, err := parseL4Config(tc.Input)
 
 		if tc.ErrorExpected && err == nil {
 			t.Errorf("%s: expected an error but valid information returned: %v ", k, tc.Input)

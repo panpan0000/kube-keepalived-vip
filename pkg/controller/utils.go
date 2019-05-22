@@ -22,7 +22,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
+	"strconv"
 	"github.com/golang/glog"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +34,7 @@ import (
 
 var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
-	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
+    l4confRegex   = regexp.MustCompile(`(.*)/(.*):(\d*)(@(rr|wrr|lc|wlc|sh|dh|lblc))?(\|(.*))?`) //ns/svc:1234@rr|NAT
 	vethRegex     = regexp.MustCompile(`^veth.*`)
 	caliRegex     = regexp.MustCompile(`^cali.*`)
 	lvsRegex      = regexp.MustCompile(`NAT|DR|PROXY`)
@@ -210,33 +210,35 @@ func parseNsName(input string) (string, string, error) {
 	return nsName[0], nsName[1], nil
 }
 
-func parseNsSvcLVS(input string) (string, string, string, error) {
-	nsSvcLb := nsSvcLbRegex.FindStringSubmatch(input)
-	if len(nsSvcLb) != 6 {
-		return "", "", "", fmt.Errorf("invalid format (namespace/service name[:NAT|DR|PROXY]) found in '%v'", input)
+func parseL4Config(input string) (string, string, int, string, string, error) {
+	conf := l4confRegex.FindStringSubmatch(input)
+	if len(conf) != 8 {
+        return "","",0, "", "", fmt.Errorf("invalid format (namespace/servicename:port@lbMethod|[:NAT|DR|PROXY]) found in '%v'", input)
 	}
+    ns  := conf[1]
+    svc := conf[2]
+    port,errStr2int:=strconv.Atoi( conf[3] )
+    if errStr2int != nil {
+        return "","",0, "", "", fmt.Errorf("invalid port in configMap %v, it should be int", conf[3])
+    }
 
-	ns := nsSvcLb[1]
-	svc := nsSvcLb[2]
-	kind := nsSvcLb[3]
+    lbMethod := conf[5]
+    kind :=conf[7]
 
-	if ns == "" {
-		ns = nsSvcLb[4]
-	}
-
-	if svc == "" {
-		svc = nsSvcLb[5]
+	if lbMethod == "" {
+		lbMethod = "wlc"
 	}
 
 	if kind == "" {
 		kind = "NAT"
 	}
 
+
 	if !lvsRegex.MatchString(kind) {
-		return "", "", "", fmt.Errorf("invalid LVS method. Only NAT,DR and PROXY are supported: %v", kind)
+		return "", "", 0,"","", fmt.Errorf("invalid LVS method. Only NAT,DR and PROXY are supported: %v", kind)
 	}
 
-	return ns, svc, kind, nil
+	return ns, svc, port, lbMethod, kind, nil
 }
 
 type nodeSelector map[string]string

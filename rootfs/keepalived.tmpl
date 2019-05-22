@@ -61,7 +61,7 @@ vrrp_instance vips {
 # Service: {{ $svc.Name }}
 virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   delay_loop 5
-  lvs_sched wlc
+  lvs_sched {{ $svc.LbMethod }}
   lvs_method {{ $svc.LVSMethod }}
   persistence_timeout 1800
   protocol {{ $svc.Protocol }}

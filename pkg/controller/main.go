@@ -81,6 +81,7 @@ type vip struct {
 	IP        string
 	Port      int
 	Protocol  string
+    LbMethod  string
 	LVSMethod string
 	Backends  []service
 }
@@ -196,6 +197,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 				Name:      "",
 				IP:        externalIP,
 				Port:      0,
+				LbMethod:  "wlc",
 				LVSMethod: "VIP",
 				Backends:  nil,
 				Protocol:  "TCP",
@@ -204,7 +206,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 			continue
 		}
 
-		ns, svc, lvsm, err := parseNsSvcLVS(nsSvcLvs)
+		ns, svc, lbPort, lbMethod, lvsm, err := parseL4Config(nsSvcLvs)
 		if err != nil {
 			glog.Warningf("%v", err)
 			continue
@@ -235,7 +237,9 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 			svcs = append(svcs, vip{
 				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
 				IP:        externalIP,
-				Port:      int(servicePort.Port),
+				//Port:      int(servicePort.Port),
+				Port:      lbPort,
+				LbMethod:  lbMethod,
 				LVSMethod: lvsm,
 				Backends:  ep,
 				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
@@ -263,7 +267,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	if err != nil {
 		return fmt.Errorf("unexpected error searching configmap %v: %v", ipvsc.configMapName, err)
 	}
-
+	glog.V(2).Infof("ConfigMap =%v",cfgMap)
 	svc := ipvsc.getServices(cfgMap)
 
 	err = ipvsc.keepalived.WriteCfg(svc)
