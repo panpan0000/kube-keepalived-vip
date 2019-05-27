@@ -79,7 +79,8 @@ func (c serviceByIPPort) Less(i, j int) bool {
 type vip struct {
 	Name      string
 	IP        string
-	Port      int
+    ExternalPort  int32
+	ContainerPort int32  //old Port variable means ContainerPort
 	Protocol  string
     LbMethod  string
 	LVSMethod string
@@ -103,8 +104,8 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 		return iIP < jIP
 	}
 
-	iPort := c[i].Port
-	jPort := c[j].Port
+	iPort := c[i].ContainerPort
+	jPort := c[j].ContainerPort
 	return iPort < jPort
 }
 
@@ -188,7 +189,15 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 
 	// k -> IP to use
 	// v -> <namespace>/<service name>:<lvs method>
-	for externalIP, nsSvcLvs := range cfgMap.Data {
+	for address, nsSvcLvs := range cfgMap.Data {
+
+        externalIP, extPort, iface, err := parseAddress(address)
+		if err != nil {
+			glog.Warningf("%v", err)
+			continue
+		}
+        glog.V(2).Infof("parsed externalIP =%v, extPort = %v, iface=%v ", externalIP, extPort, iface)
+
 		if nsSvcLvs == "" {
 			// if target is empty string we will not forward to any service but
 			// instead just configure the IP on the machine and let it up to
@@ -196,7 +205,8 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 			svcs = append(svcs, vip{
 				Name:      "",
 				IP:        externalIP,
-				Port:      0,
+                ContainerPort: 0,
+                ExternalPort:  extPort,
 				LbMethod:  "wlc",
 				LVSMethod: "VIP",
 				Backends:  nil,
@@ -206,13 +216,13 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 			continue
 		}
 
-		ns, svc, lbPort, lbMethod, lvsm, err := parseL4Config(nsSvcLvs)
+        svcConf , err := parseL4Config(nsSvcLvs)
+
 		if err != nil {
 			glog.Warningf("%v", err)
 			continue
 		}
-
-		nsSvc := fmt.Sprintf("%v/%v", ns, svc)
+		nsSvc := fmt.Sprintf("%v/%v", svcConf.namespace , svcConf.service )
 		svcObj, svcExists, err := ipvsc.svcLister.Store.GetByKey(nsSvc)
 		if err != nil {
 			glog.Warningf("error getting service %v: %v", nsSvc, err)
@@ -231,16 +241,20 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 				glog.Warningf("no endpoints found for service %v, port %+v", s.Name, servicePort)
 				continue
 			}
+            if svcConf.port != servicePort.TargetPort { // should it be TargetPort or Port ? FIXME ?
+                glog.Infof("skip port %v for service, because it was not explicitly specified in Config Map ",svcConf.service,  servicePort.TargetPort)
+                continue
+            }
 
 			sort.Sort(serviceByIPPort(ep))
 
 			svcs = append(svcs, vip{
 				Name:      fmt.Sprintf("%v-%v", s.Namespace, s.Name),
 				IP:        externalIP,
-				//Port:      int(servicePort.Port),
-				Port:      lbPort,
-				LbMethod:  lbMethod,
-				LVSMethod: lvsm,
+				ContainerPort: svcConf.port, //int32(servicePort.Port),
+				ExternalPort:  extPort,
+				LbMethod:  svcConf.lbAlgo,
+				LVSMethod: svcConf.lvKind,
 				Backends:  ep,
 				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
 			})

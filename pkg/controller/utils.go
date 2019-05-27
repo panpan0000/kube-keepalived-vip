@@ -22,7 +22,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"strconv"
+    "strconv"
+
 	"github.com/golang/glog"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,16 +35,26 @@ import (
 
 var (
 	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
-    l4confRegex   = regexp.MustCompile(`(.*)/(.*):(\d*)(@(rr|wrr|lc|wlc|sh|dh|lblc))?(\|(.*))?`) //ns/svc:1234@rr|NAT
 	vethRegex     = regexp.MustCompile(`^veth.*`)
 	caliRegex     = regexp.MustCompile(`^cali.*`)
 	lvsRegex      = regexp.MustCompile(`NAT|DR|PROXY`)
+    lbAlgoRegex   = regexp.MustCompile(`rr|wrr|lc|wlc|sh|dh|lblc|sed|nq`)
 )
 
 type nodeInfo struct {
 	iface   string
 	ip      string
 	netmask int
+}
+
+type svcConfig struct {
+    namespace string
+    service   string
+    port      int32
+    lbAlgo    string
+    lvKind    string
+    weight    int
+
 }
 
 // getNetworkInfo returns information of the node where the pod is running
@@ -60,7 +71,6 @@ func getNetworkInfo(ip string) (*nodeInfo, error) {
 }
 
 // netInterfaces returns a slice containing the local network interfaces
-// excluding lo, docker0, flannel.1 and veth interfaces.
 func netInterfaces() ([]net.Interface, error) {
 	validIfaces := []net.Interface{}
 	ifaces, err := net.Interfaces()
@@ -209,36 +219,77 @@ func parseNsName(input string) (string, string, error) {
 
 	return nsName[0], nsName[1], nil
 }
+func parseAddress(address string) (string, int32, string, error) {
+    re := regexp.MustCompile(`(.*)-(\d+)(-(.+))?`)
+    matches := re.FindStringSubmatch(address)
+    if matches == nil || len(matches) !=5{
+        return "", 0, "", fmt.Errorf("invalid: address string: %q, should be in format of VIP-ExtPort ", address)
+    }
+    ip := matches[1]
+    extPort, err := strconv.Atoi(matches[2])
+    iface := matches[4]
+    if err != nil {
+        return "", 0, "",fmt.Errorf("invalid: address string: %q, port value should be int", address)
+    }
+    return ip, int32(extPort), iface, nil
+}
 
-func parseL4Config(input string) (string, string, int, string, string, error) {
-	conf := l4confRegex.FindStringSubmatch(input)
-	if len(conf) != 8 {
-        return "","",0, "", "", fmt.Errorf("invalid format (namespace/servicename:port@lbMethod|[:NAT|DR|PROXY]) found in '%v'", input)
-	}
-    ns  := conf[1]
-    svc := conf[2]
-    port,errStr2int:=strconv.Atoi( conf[3] )
-    if errStr2int != nil {
-        return "","",0, "", "", fmt.Errorf("invalid port in configMap %v, it should be int", conf[3])
+func parseL4Config(input string) ( svcConfig, error) {
+
+    conf := svcConfig{
+        namespace:"default",
+        service:"",
+        port:0,
+        lbAlgo:"wlc",
+        lvKind:"NAT",
+        weight:100,
     }
 
-    lbMethod := conf[5]
-    kind :=conf[7]
+    lines := strings.Split(input,"\n")
+    for _, line := range lines{
+        kv := strings.Split( line,"=")
+        if len(kv) != 2 {
+            return conf, fmt.Errorf("invalid config format in '%v'", line)
+        }
+        k := kv[0]
+        v := kv[1]
+        switch {
+        case k =="service":
+            nsSvc := strings.Split( v ,"/")
+            if len(nsSvc) != 2 {
+                return conf, fmt.Errorf("invalid config format in '%v', should be namespace/service ", nsSvc )
+            }
+            conf.namespace = nsSvc[0]
+            conf.service   = nsSvc[1]
+        case k =="port":
+            p, err := strconv.Atoi(v)
+            if err != nil {
+                return conf, fmt.Errorf("unrecognized port value '%v' in '%v'", v, line)
+            }
+            conf.port = int32(p)
+        case k == "lbAlgo":
+            if !lbAlgoRegex.MatchString(v){
+                return conf, fmt.Errorf("invalid Load Balance method. rr|wrr|lc|wlc|sh|dh|lblc|nq|sed are supported: %v", v)
+            }
+            conf.lbAlgo = v
+        case k == "lvKind":
+            if !lvsRegex.MatchString(v){
+                return conf, fmt.Errorf("invalid LVS method. Only NAT,DR and PROXY are supported: %v", v)
+            }
+            conf.lvKind = v
+        case k == "weight":
+            w, err := strconv.Atoi(v)
+            if err != nil {
+                return conf, fmt.Errorf("unrecognized weight value '%v' in '%v'", v, line)
+            }
+            conf.weight = w
+        default:
+            return conf, fmt.Errorf("unrecognized config key '%v' in '%v'", k, line)
+        }
 
-	if lbMethod == "" {
-		lbMethod = "wlc"
-	}
+    }
 
-	if kind == "" {
-		kind = "NAT"
-	}
-
-
-	if !lvsRegex.MatchString(kind) {
-		return "", "", 0,"","", fmt.Errorf("invalid LVS method. Only NAT,DR and PROXY are supported: %v", kind)
-	}
-
-	return ns, svc, port, lbMethod, kind, nil
+	return conf, nil
 }
 
 type nodeSelector map[string]string

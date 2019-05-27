@@ -59,7 +59,7 @@ vrrp_instance vips {
 # VIP Service with no pods: {{ $svc.IP }}
 {{ else }}
 # Service: {{ $svc.Name }}
-virtual_server {{ $svc.IP }} {{ $svc.Port }} {
+virtual_server {{ $svc.IP }} {{ $svc.ExternalPort }} {
   delay_loop 5
   lvs_sched {{ $svc.LbMethod }}
   lvs_method {{ $svc.LVSMethod }}
@@ -67,10 +67,10 @@ virtual_server {{ $svc.IP }} {{ $svc.Port }} {
   protocol {{ $svc.Protocol }}
 
   {{ range $j, $backend := $svc.Backends }}
-  real_server {{ $backend.IP }} {{ $backend.Port }} {
+  real_server {{ $backend.IP }} {{ $svc.ContainerPort }} {
     weight 1
     TCP_CHECK {
-      connect_port {{ $backend.Port }}
+      connect_port {{ $svc.ContainerPort }}
       connect_timeout 3
     }
   }
