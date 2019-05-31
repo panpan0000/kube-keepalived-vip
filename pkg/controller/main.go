@@ -19,6 +19,7 @@ package controller
 import (
 	"crypto/md5"
 	"encoding/hex"
+    "encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -241,7 +242,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 				glog.Warningf("no endpoints found for service %v, port %+v", s.Name, servicePort)
 				continue
 			}
-            if svcConf.port != servicePort.TargetPort { // should it be TargetPort or Port ? FIXME ?
+            if int(svcConf.port) != servicePort.TargetPort.IntValue() { // should it be TargetPort or Port ? FIXME ?
                 glog.Infof("skip port %v for service, because it was not explicitly specified in Config Map ",svcConf.service,  servicePort.TargetPort)
                 continue
             }
@@ -483,10 +484,25 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 			http.Error(rw, fmt.Sprintf("keepalived not healthy: %v", err), 500)
 			return
 		}
-
 		glog.V(3).Info("Health check successful")
 		fmt.Fprint(rw, "OK")
 	})
+
+	http.HandleFunc("/metrics", func(rw http.ResponseWriter, req *http.Request) {
+		metrics, err := ipvsc.keepalived.Metrics()
+		if err != nil {
+			glog.Errorf("Metrics API unsuccessful: %v", err)
+			http.Error(rw, fmt.Sprintf("Metrics API error: %v", err), 500)
+			return
+		}
+        jsOut ,jsErr := json.Marshal( metrics )
+        if jsErr == nil{
+            fmt.Fprint(rw, string(jsOut) )
+        }else{
+            fmt.Fprint(rw, "json.Marshal error %v\n" ,jsErr)
+        }
+	})
+
 
 	return &ipvsc
 }

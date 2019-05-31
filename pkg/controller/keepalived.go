@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+    "strconv"
 	"syscall"
 	"text/template"
 	"time"
@@ -47,6 +48,27 @@ var (
 	keepalivedTmpl = "keepalived.tmpl"
 	haproxyTmpl    = "haproxy.tmpl"
 )
+
+type epMetrics struct {
+    EpIp   string
+    EpPort int32
+    Cps    int
+    InPPS  int
+    OutPPS int
+    InBPS  int
+    OutBPS int
+}
+type vipMetrics struct {
+    Protocol string
+    Vip     string
+    Port    int32
+    Eps     []epMetrics
+    Cps    int
+    InPPS  int
+    OutPPS int
+    InBPS  int
+    OutBPS int
+}
 
 type keepalived struct {
 	iface          string
@@ -193,6 +215,106 @@ func (k *keepalived) IsRunning() bool {
 	}
 
 	return true
+}
+
+func (k *keepalived) stringToInt( input []string )( []int, error){
+    ret := []int{}
+    for _, s := range input {
+       v, err := strconv.Atoi(s)
+       if err != nil {
+           return ret, err
+       }
+       ret = append( ret, v )
+    }
+    return ret, nil
+}
+
+/////////////////////////////////////////////////////
+// the input should looks like IP:Port 0 1 2 3 4
+//////////////////////////////////////////////////
+func (k *keepalived) decodeMetricsLine( input []string )( ip string, port int32, values []int,  err error){
+    if len(input) != 6 {
+        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: input array length invalid = %d", input)
+    }
+    ipPort := input[0]
+    ipAndPort  := strings.Split( ipPort, ":" )
+    ip   = ipAndPort[0]
+    portInt := 0
+    portInt, err = strconv.Atoi(  ipAndPort[1] )
+    port = int32(portInt)
+    if err != nil {
+        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert VIP port to int : %v" , ipAndPort[1])
+    }
+    port = int32(port)
+    values , err  = k.stringToInt( input[1:] )
+    if err != nil {
+        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert values to int %v", input[2:6] )
+    }
+    return ip, port, values, nil
+
+}
+
+////////////////////////////////////////////////////////////
+func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
+	var out bytes.Buffer
+	cmd := exec.Command("ipvsadm", "-Ln", "--stats")
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = &out
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+		Pgid:    0,
+	}
+
+    err = cmd.Run()
+	if err != nil {
+		return metricsList, err
+	}
+
+    outstr := strings.Split(out.String(), "\n")[3:] // skip the first 3 lines of headerline
+
+    cnt := -1
+    for _, line := range outstr {
+        if len(line) <=1 {
+            continue;
+        }
+        if ( ! strings.Contains(line, "->") ) {
+            // vip line: TCP  10.6.111.111:40002                  0        0        0        0        0
+            metcs := vipMetrics{}
+            arr := strings.Fields(line)
+            metcs.Protocol = arr[0]
+            values := []int{}
+            metcs.Vip, metcs.Port, values, err = k.decodeMetricsLine( arr[1:] )
+            if err != nil {
+                return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+            }
+            metcs.Cps    = values[0]
+            metcs.InPPS  = values[1]
+            metcs.OutPPS = values[2]
+            metcs.InBPS  = values[3]
+            metcs.OutBPS = values[4]
+            metricsList = append( metricsList, metcs )
+            cnt ++
+        }else{
+            if (cnt < 0){
+                return metricsList, fmt.Errorf("ipvsadm parsing error: endpoint should follow the vip line.output= %v", outstr)
+            }
+            // ep lines  :   -> 172.28.210.141:80                   0        0        0        0        0
+            epM := epMetrics{}
+            arr := strings.Fields(line)
+            values := []int{}
+            epM.EpIp, epM.EpPort, values, err = k.decodeMetricsLine( arr[1:] )
+            if err != nil {
+                return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+            }
+            epM.Cps    = values[0]
+            epM.InPPS  = values[1]
+            epM.OutPPS = values[2]
+            epM.InBPS  = values[3]
+            epM.OutBPS = values[4]
+            metricsList[cnt].Eps = append( metricsList[cnt].Eps, epM )
+        }
+    }
+    return metricsList, nil
 }
 
 // Whether keepalived child process is currently running and VIPs are assigned
