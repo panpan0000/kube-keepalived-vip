@@ -99,6 +99,7 @@ type keepalived struct {
 	proxyMode      bool
 	notify         string
 	releaseVips    bool
+    dnatChain      string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -164,6 +165,51 @@ func getVIPs(svcs []vip) []string {
 	return result
 }
 
+//====================================================
+// since LVS NAT mode doesn't do the DNAT by default, so here we set it up on host
+//====================================================
+func (k *keepalived) SetupIptablesDNAT() {
+    // Q&A:
+    // Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
+    // A: Here we setup Legacy iptables rules instead of nf_table iptable
+    iptbl := " iptables-legacy "
+    targetCidr := "0.0.0.0/0"
+    cmdStr :=  iptbl + "-t nat -N " + k.dnatChain // create a new customized chain
+    cmdStr += " && " + iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" // add a rule , DNAT all
+    cmdStr += " && " + iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain // add this custmized chain to the top of POSTROUTING chain
+	cmd := exec.Command("bash", "-c", cmdStr )
+	cmd.Stderr = os.Stderr
+    var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+		Pgid:    0,
+	}
+    if err := cmd.Run(); err != nil {
+		glog.Fatalf("Error setup iptables DNAT rules: %v", err)
+	}
+}
+//====================================================
+// delete the customized iptables chain which keepalived-vip container set up  on host 
+//====================================================
+func (k *keepalived) CleanupIptablesDNAT() {
+    iptbl := " iptables-legacy "
+    glog.Info("cleanup dnat iptables..")
+    cmdStr :=  iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain // remove chain from POSTROUTING
+    cmdStr += "&&" + iptbl + "-t nat -F " + k.dnatChain  // flush chain
+    cmdStr += "&&" + iptbl + "-t nat -X " + k.dnatChain  // delete chain
+	cmd := exec.Command("bash", "-c", cmdStr )
+	cmd.Stderr = os.Stderr
+    var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+		Pgid:    0,
+	}
+    if err := cmd.Run(); err != nil {
+		glog.Fatalf("Error clean up iptables DNAT rules: %v", err)
+	}
+}
 // Start starts a keepalived process in foreground.
 // In case of any error it will terminate the execution with a fatal error
 func (k *keepalived) Start() {

@@ -83,6 +83,8 @@ var (
 	httpPort = flags.Int("http-port", 8080, `The HTTP port to use for health checks`)
 
 	releaseVips = flags.Bool("release-vips", true, `add --release-vips to keepalived args`)
+
+    willAddDNAT = flags.Bool("add-iptables-dnat", false, `add iptables DNAT rules on the host`)
 )
 
 func main() {
@@ -134,7 +136,7 @@ func main() {
 	}
 
 	glog.Info("starting LVS configuration")
-	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips)
+	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips, *willAddDNAT)
 
 	// If kube-proxy running in ipvs mode
 	// Reset of IPVS lead to connection loss with API server

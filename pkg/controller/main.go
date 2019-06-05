@@ -143,6 +143,8 @@ type ipvsControllerController struct {
 	syncQueue *task.Queue
 
 	stopCh chan struct{}
+
+    willAddDNAT bool
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -333,6 +335,8 @@ func (ipvsc *ipvsControllerController) Start() {
 		}
 	}()
 
+    glog.Info("starting Setup DNAT iptables rules")
+    ipvsc.keepalived.SetupIptablesDNAT()
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
 }
@@ -362,7 +366,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 		glog.Infof("shutting down controller queues")
 		close(ipvsc.stopCh)
 		go ipvsc.syncQueue.Shutdown()
-
+        ipvsc.keepalived.CleanupIptablesDNAT()
 		ipvsc.keepalived.Stop()
 
 		return nil
@@ -372,13 +376,14 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
 		configMapName:     configMapName,
 		httpPort:          httpPort,
 		stopCh:            make(chan struct{}),
+        willAddDNAT:       willAddDNAT,
 	}
 
 	podInfo, err := k8s.GetPodDetails(kubeClient)
@@ -423,6 +428,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		proxyMode:   proxyMode,
 		notify:     notify,
 		releaseVips: releaseVips,
+        dnatChain : "DCE_L4_DNAT_CHAIN",
 	}
 
 	ipvsc.syncQueue = task.NewTaskQueue(ipvsc.sync)
