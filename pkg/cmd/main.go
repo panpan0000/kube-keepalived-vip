@@ -52,11 +52,15 @@ var (
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
 
-	configMapName = flags.String("services-configmap", "",
+	configMapSvcName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
 		The key in the map indicates the external IP to use. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
+
+	configMapGlobalName = flags.String("global-configmap", "",
+		`Name of the ConfigMap that defines some global LVS settings.`)
+
 
 	proxyMode = flags.Bool("proxy-protocol-mode", false, `If true, it will use keepalived to announce the virtual
 		IP address/es and HAProxy with proxy protocol to forward traffic to the endpoints.
@@ -97,8 +101,12 @@ func main() {
 	// https://github.com/kubernetes/kubernetes/issues/17162
 	flag.CommandLine.Parse([]string{})
 
-	if *configMapName == "" {
+	if *configMapSvcName == "" {
 		glog.Fatalf("Please specify --services-configmap")
+	}
+
+	if *configMapGlobalName == "" {
+		glog.Fatalf("Please specify --global-configmap")
 	}
 
 	if *httpPort < 0 || *httpPort > 65535 {
@@ -136,7 +144,7 @@ func main() {
 	}
 
 	glog.Info("starting LVS configuration")
-	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips, *willAddDNAT)
+	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips, *willAddDNAT)
 
 	// If kube-proxy running in ipvs mode
 	// Reset of IPVS lead to connection loss with API server

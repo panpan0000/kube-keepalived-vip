@@ -29,6 +29,7 @@ import (
 	"sort"
 	"sync"
 	"syscall"
+    "strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -75,6 +76,22 @@ func (c serviceByIPPort) Less(i, j int) bool {
 	iPort := c[i].Port
 	jPort := c[j].Port
 	return iPort < jPort
+}
+////////////////////////
+//DCE customized ----
+///////////////////////
+type globalSetting struct {
+    L4VIP string
+    L7VIP string
+    iface string
+    L7Ep1Ip string
+    L7Ep2Ip string
+    L7Ep1HttpPort int
+    L7Ep2HttpPort int
+    L7Ep1HttpsPort int
+    L7Ep2HttpsPort int
+    L7Ep1Weight int
+    L7Ep2Weight int
 }
 
 type vip struct {
@@ -128,7 +145,8 @@ type ipvsControllerController struct {
 
 	keepalived *keepalived
 
-	configMapName string
+	configSvcMapName string
+	configGlobalMapName string
 
 	httpPort int
 
@@ -186,6 +204,77 @@ func (ipvsc *ipvsControllerController) getEndpoints(
 
 	return endpoints
 }
+// get global setting from configmap
+func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap) ( globalSetting, error ) {
+    setting := globalSetting{
+        L4VIP: "",
+        L7VIP : "",
+        iface : "ens192",
+        L7Ep1Ip : "",
+        L7Ep2Ip : "",
+        L7Ep1HttpPort : 80,
+        L7Ep2HttpPort : 80,
+        L7Ep1HttpsPort :443,
+        L7Ep2HttpsPort :443,
+        L7Ep1Weight :100,
+        L7Ep2Weight :100,
+    }
+
+    for k,v :=  range cfgMap.Data{
+        switch k {
+        case "L4VIP":
+            setting.L4VIP = v
+        case "L7VIP":
+            setting.L7VIP = v
+        case "iface":
+            setting.iface= v
+        case "L7Ep1Ip":
+            setting.L7Ep1Ip= v
+        case "L7Ep2Ip":
+            setting.L7Ep2Ip= v
+        case "L7Ep1HttpPort":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep1HttpPort = intV
+        case "L7Ep2HttpPort":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep2HttpPort = intV
+        case "L7Ep1HttpsPort":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep1HttpsPort = intV
+        case "L7Ep2HttpsPort":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep2HttpsPort = intV
+        case "L7Ep1Weight":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep1Weight = intV
+        case "L7Ep2Weight":
+            intV, err := strconv.Atoi(v)
+            if err != nil{
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            }
+            setting.L7Ep2Weight = intV
+        default:
+            return setting, fmt.Errorf("Unrecognized key in configmap :%v\n", k)
+        }
+    }
+    return setting, nil
+}
+
 
 // getServices returns a list of services and their endpoints.
 func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vip {
@@ -277,25 +366,61 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	ipvsc.reloadRateLimiter.Accept()
 
-	ns, name, err := parseNsName(ipvsc.configMapName)
+    //Retrive first COnfigMap : ipvsc.configSvcMapName
+	ns_svc, name_svc, err_svc := parseNsName(ipvsc.configSvcMapName)
+	if err_svc != nil {
+		glog.Warningf("%v", err_svc)
+		return err_svc
+	}
+	cfgMap_svc, err_gsvc := ipvsc.getConfigMap(ns_svc, name_svc)
+	if err_gsvc != nil {
+		return fmt.Errorf("unexpected error searching configmap %v/%v: %v", ns_svc, name_svc , err_gsvc)
+	}
+
+	glog.V(2).Infof("ConfigMap Service =%v",cfgMap_svc)
+
+
+    //DCE: Retrive second ConfigMap : ipvsc.configGlobalMapName
+	ns_gb, name_gb, err_gb := parseNsName(ipvsc.configGlobalMapName)
+	if err_gb != nil {
+		glog.Warningf("%v", err_gb)
+		return err_gb
+	}
+	cfgMap_gb, err_ggb := ipvsc.getConfigMap(ns_gb, name_gb)
+	if err_ggb != nil {
+		return fmt.Errorf("unexpected error searching configmap %v/%v: %v", ns_gb, name_gb, err_ggb)
+	}
+
+	glog.V(2).Infof("ConfigMap Global =%v",cfgMap_gb)
+
+    // get services config from service configMap
+	svcs := ipvsc.getServices(cfgMap_svc)
+
+    // get DCE specific globalSettings from cfgMap_gb ConfigMap
+    globalSettings, err_gs := ipvsc.getGlobalSetting( cfgMap_gb )
+    if err_gs != nil {
+        return fmt.Errorf("unexpected error getting global setting from configmap %v: %v",  ipvsc.configGlobalMapName, err_gs )
+    }
+
+    // override global setting ,if service setting is blank
+    for  _, svc := range svcs{
+        if svc.IP == ""{
+            svc.IP = globalSettings.L4VIP // 这边对SVC的读取是指针/引用 还是传值？
+        }
+    }
+    //DEBUG， 验证指针还是引用
+    for  _, svc2 := range svcs{
+        glog.Info("DEBUG, svc.IP=", svc2.IP)
+    }
+
+
+    // re-render the keepalived.conf 
+    err := ipvsc.keepalived.WriteCfg(svcs, globalSettings)
 	if err != nil {
-		glog.Warningf("%v", err)
 		return err
 	}
 
-	cfgMap, err := ipvsc.getConfigMap(ns, name)
-	if err != nil {
-		return fmt.Errorf("unexpected error searching configmap %v: %v", ipvsc.configMapName, err)
-	}
-	glog.V(2).Infof("ConfigMap =%v",cfgMap)
-	svc := ipvsc.getServices(cfgMap)
-
-	err = ipvsc.keepalived.WriteCfg(svc)
-	if err != nil {
-		return err
-	}
-
-	glog.V(2).Infof("services: %v", svc)
+	glog.V(2).Infof("services: %v", svcs)
 
 	md5, err := checksum(keepalivedCfg)
 	if err == nil && md5 == ipvsc.ruMD5 {
@@ -379,11 +504,12 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
-		configMapName:     configMapName,
+		configSvcMapName:     configSvcMapName,
+        configGlobalMapName : configGlobalMapName,
 		httpPort:          httpPort,
 		stopCh:            make(chan struct{}),
         willAddDNAT:       willAddDNAT,
@@ -447,7 +573,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 				upCmap := cur.(*apiv1.ConfigMap)
 				mapKey := fmt.Sprintf("%s/%s", upCmap.Namespace, upCmap.Name)
 				// updates to configuration configmaps can trigger an update
-				if mapKey == ipvsc.configMapName {
+				if mapKey == ipvsc.configSvcMapName || mapKey == ipvsc.configGlobalMapName {
 					ipvsc.syncQueue.Enqueue(cur)
 				}
 			}
@@ -476,14 +602,24 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "endpoints", namespace, fields.Everything()),
 		&apiv1.Endpoints{}, resyncPeriod, eventHandlers)
 
-	cmns, cmn, err := parseNsName(ipvsc.configMapName)
-	if err != nil {
-		glog.Fatalf("Error parsing configmap name: %v", err)
+	cmns_svc, cmn_svc, err_svc := parseNsName(ipvsc.configSvcMapName)
+	if err_svc != nil {
+		glog.Fatalf("Error parsing configmap name: %v", err_svc)
+	}
+
+	cmns_gb, cmn_gb, err_gb := parseNsName(ipvsc.configGlobalMapName)
+	if err_gb != nil {
+		glog.Fatalf("Error parsing configmap name: %v", err_gb)
 	}
 
 	ipvsc.mapLister.Store, ipvsc.mapController = cache.NewInformer(
-		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns,
-			fields.OneTermEqualSelector(api.ObjectNameField, cmn)),
+		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns_svc,
+			fields.OneTermEqualSelector(api.ObjectNameField, cmn_svc)),
+		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
+
+	ipvsc.mapLister.Store, ipvsc.mapController = cache.NewInformer(
+		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns_gb,
+			fields.OneTermEqualSelector(api.ObjectNameField, cmn_gb)),
 		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
 
 	http.HandleFunc("/health", func(rw http.ResponseWriter, req *http.Request) {
@@ -522,7 +658,7 @@ func (ipvsc *ipvsControllerController) getConfigMap(ns, name string) (*apiv1.Con
 		return nil, err
 	}
 	if !exists {
-		return nil, fmt.Errorf("configmap %v was not found", name)
+		return nil, fmt.Errorf("configmap %v/%v was not found",  ns, name)
 	}
 	return s.(*apiv1.ConfigMap), nil
 }

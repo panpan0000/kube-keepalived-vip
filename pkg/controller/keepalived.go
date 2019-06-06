@@ -104,7 +104,7 @@ type keepalived struct {
 
 // WriteCfg creates a new keepalived configuration file.
 // In case of an error with the generation it returns the error
-func (k *keepalived) WriteCfg(svcs []vip) error {
+func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 	w, err := os.Create(keepalivedCfg)
 	if err != nil {
 		return err
@@ -112,6 +112,10 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	defer w.Close()
 
 	k.vips = getVIPs(svcs)
+
+    if settings.iface != "" {
+        k.iface = settings.iface
+    }
 
 	conf := make(map[string]interface{})
 	conf["iptablesChain"] = iptablesChain
@@ -124,7 +128,6 @@ func (k *keepalived) WriteCfg(svcs []vip) error {
 	conf["priority"] = k.priority
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
-	conf["iface"] = k.iface
 	conf["proxyMode"] = k.proxyMode
 	conf["vipIsEmpty"] = len(k.vips) == 0
 	conf["notify"] = k.notify

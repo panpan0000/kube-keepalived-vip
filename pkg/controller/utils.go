@@ -220,10 +220,10 @@ func parseNsName(input string) (string, string, error) {
 	return nsName[0], nsName[1], nil
 }
 func parseAddress(address string) (string, int32, string, error) {
-    re := regexp.MustCompile(`(.*)-(\d+)(-(.+))?`)
+    re := regexp.MustCompile(`(.*)?-(\d+)(-(.+))?`)
     matches := re.FindStringSubmatch(address)
     if matches == nil || len(matches) !=5{
-        return "", 0, "", fmt.Errorf("invalid: address string: %q, should be in format of VIP-ExtPort ", address)
+        return "", 0, "", fmt.Errorf("invalid: address string: %q, should be in format of VIP*-ExtPort-Iface* ", address)
     }
     ip := matches[1]
     extPort, err := strconv.Atoi(matches[2])
