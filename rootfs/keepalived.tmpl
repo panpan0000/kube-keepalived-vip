@@ -63,7 +63,7 @@ virtual_server {{ $svc.IP }} {{ $svc.ExternalPort }} {
   delay_loop 5
   lvs_sched {{ $svc.LbMethod }}
   lvs_method {{ $svc.LVSMethod }}
-  persistence_timeout 1800
+  persistence_timeout {{ $svc.PersistenceTimeout  }}
   protocol {{ $svc.Protocol }}
 
   {{ range $j, $backend := $svc.Backends }}

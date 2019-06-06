@@ -85,6 +85,7 @@ type vip struct {
 	Protocol  string
     LbMethod  string
 	LVSMethod string
+    PersistenceTimeout int
 	Backends  []service
 }
 
@@ -214,6 +215,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 				LVSMethod: "VIP",
 				Backends:  nil,
 				Protocol:  "TCP",
+                PersistenceTimeout : 1800,
 			})
 			glog.V(2).Infof("Adding VIP only service: %v", externalIP)
 			continue
@@ -258,6 +260,7 @@ func (ipvsc *ipvsControllerController) getServices(cfgMap *apiv1.ConfigMap) []vi
 				ExternalPort:  extPort,
 				LbMethod:  svcConf.lbAlgo,
 				LVSMethod: svcConf.lvKind,
+                PersistenceTimeout: svcConf.persistence_timeout,
 				Backends:  ep,
 				Protocol:  fmt.Sprintf("%v", servicePort.Protocol),
 			})

@@ -53,7 +53,7 @@ type svcConfig struct {
     port      int32
     lbAlgo    string
     lvKind    string
-    weight    int
+    persistence_timeout int
 
 }
 
@@ -242,7 +242,7 @@ func parseL4Config(input string) ( svcConfig, error) {
         port:0,
         lbAlgo:"wlc",
         lvKind:"NAT",
-        weight:100,
+        persistence_timeout:1800,
     }
 
     lines := strings.Split(input,"\n")
@@ -277,12 +277,12 @@ func parseL4Config(input string) ( svcConfig, error) {
                 return conf, fmt.Errorf("invalid LVS method. Only NAT,DR and PROXY are supported: %v", v)
             }
             conf.lvKind = v
-        case k == "weight":
-            w, err := strconv.Atoi(v)
+        case k == "persistence_timeout":
+            pt, err := strconv.Atoi(v)
             if err != nil {
-                return conf, fmt.Errorf("unrecognized weight value '%v' in '%v'", v, line)
+                return conf, fmt.Errorf("unrecognized persistence_timeout value '%v' in '%v'", v, line)
             }
-            conf.weight = w
+            conf.persistence_timeout = pt
         default:
             return conf, fmt.Errorf("unrecognized config key '%v' in '%v'", k, line)
         }
