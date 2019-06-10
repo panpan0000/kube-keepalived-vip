@@ -1,84 +1,182 @@
 {{ $iface := .iface }}{{ $netmask := .netmask }}
-
+{{ $L7VIP := .L7VIP }}
 global_defs {
   vrrp_version 3
   vrrp_iptables {{ .iptablesChain }}
 }
 
+{{ if not .l7vipIsEmpty }}
+## L7 Instance
+    vrrp_instance ingress {
+      interface {{ $iface }}
+      state BACKUP
+      virtual_router_id {{ .vrid_ingress }}
+      priority {{ .priority_ingress }}
+      nopreempt
+      advert_int 1
+
+      track_interface {
+        {{ $iface }}
+      }
+
+      authentication {
+            auth_type PASS
+            auth_pass dce-ingress
+      }
+
+      {{ if .notify }} notify {{ .notify }} {{ end }}
+
+      {{ if .useUnicast }}
+          unicast_src_ip {{ .myIP }}
+          unicast_peer { {{ range .nodes }}
+            {{ . }}{{ end }}
+          }
+      {{ end }}
+
+      virtual_ipaddress {
+        {{ $L7VIP }} dev {{ $iface }}
+      }
+
+      notify /keepalived-check.sh
+    }
+# HTTP
+    virtual_server {{ $L7VIP }} {{ .L7HttpPort }} {
+        delay_loop 5
+        lvs_sched wlc
+        lvs_method NAT
+        persistence_timeout 60
+        protocol TCP
+
+        {{ range $i, $ep := .l7eps }}
+        real_server {{ $ep.Ip }} {{ $ep.HttpPort }} {
+          weight  {{ $ep.Weight }}
+          alpha
+          TCP_CHECK {
+            connect_port {{ $ep.HttpPort}}
+            connect_timeout 3
+            delay_before_retry 1
+          }
+        }
+        {{ end }}
+    }
+# HTTPS
+    virtual_server {{ $L7VIP }} {{ .L7HttpsPort }} {
+        delay_loop 5
+        lvs_sched wlc
+        lvs_method NAT
+        persistence_timeout 60
+        protocol TCP
+
+        {{ range $i, $ep := .l7eps }}
+        real_server {{ $ep.Ip }} {{ $ep.HttpsPort }} {
+          weight {{ $ep.Weight }}
+          alpha
+          TCP_CHECK {
+            connect_port {{ $ep.HttpsPort}}
+            connect_timeout 3
+            delay_before_retry 1
+          }
+          HTTP_GET {
+              url {
+                  path /
+              }
+              connect_timeout 3
+              nb_get_retry 3
+              delay_before_retry 3
+          }
+        }
+        {{ end }}
+    }
+
+
+
+{{ end }}
+
+##//////////////////////////////////////////////////
+
+
 
 #Check if the VIP list is empty
 {{ if not .vipIsEmpty }}
 
-
-{{ if .proxyMode }}
-vrrp_script chk_haproxy {
-  script "/haproxy-check.sh"
-  interval 1
-}
-{{ end }}
-
-vrrp_instance vips {
-  state BACKUP
-  interface {{ $iface }}
-  virtual_router_id {{ .vrid }}
-  priority {{ .priority }}
-  nopreempt
-  advert_int 1
-
-  track_interface {
-    {{ $iface }}
-  }
-
-  {{ if .notify }} notify {{ .notify }} {{ end }}
-
-  {{ if .useUnicast }}
-  unicast_src_ip {{ .myIP }}
-  unicast_peer { {{ range .nodes }}
-    {{ . }}{{ end }}
-  }
-  {{ end }}
-
-  virtual_ipaddress { {{ range .vips }}
-    {{ . }}{{ end }}
-  }
-
-  notify /keepalived-check.sh
-
-{{ if .proxyMode }}
-  # In proxy mode there is no need to create virtual servers
-  track_script {
-    chk_haproxy
-  }
-{{ end }}
-
-}
-
-{{ if not .proxyMode }}
-{{ range $i, $svc := .svcs }}
-{{ if eq $svc.LVSMethod "VIP" }}
-# VIP Service with no pods: {{ $svc.IP }}
-{{ else }}
-# Service: {{ $svc.Name }}
-virtual_server {{ $svc.IP }} {{ $svc.ExternalPort }} {
-  delay_loop 5
-  lvs_sched {{ $svc.LbMethod }}
-  lvs_method {{ $svc.LVSMethod }}
-  persistence_timeout {{ $svc.PersistenceTimeout  }}
-  protocol {{ $svc.Protocol }}
-
-  {{ range $j, $backend := $svc.Backends }}
-  real_server {{ $backend.IP }} {{ $svc.ContainerPort }} {
-    weight 1
-    TCP_CHECK {
-      connect_port {{ $svc.ContainerPort }}
-      connect_timeout 3
+    {{ if .proxyMode }}
+    vrrp_script chk_haproxy {
+      script "/haproxy-check.sh"
+      interval 1
     }
-  }
-  {{ end }}
-}
-{{ end }}
-{{ end }}
+    {{ end }}
+
+   
+    #######################################
+    vrrp_instance vips {
+      state BACKUP
+      interface {{ $iface }}
+      virtual_router_id {{ .vrid }}
+      priority {{ .priority }}
+      nopreempt
+      advert_int 1
+
+      track_interface {
+        {{ $iface }}
+      }
+
+      authentication {
+            auth_type PASS
+            auth_pass dce-l4
+      }
+
+      {{ if .notify }} notify {{ .notify }} {{ end }}
+
+      {{ if .useUnicast }}
+      unicast_src_ip {{ .myIP }}
+      unicast_peer { {{ range .nodes }}
+        {{ . }}{{ end }}
+      }
+      {{ end }}
+
+      virtual_ipaddress { 
+        {{ range .vips }}
+            {{ . }}  dev {{ $iface }}
+        {{ end }}
+      }
+
+      notify /keepalived-check.sh
+
+    {{ if .proxyMode }}
+      # In proxy mode there is no need to create virtual servers
+      track_script {
+        chk_haproxy
+      }
+    {{ end }}
+
+    }
+
+    {{ if not .proxyMode }}
+        {{ range $i, $svc := .svcs }}
+            {{ if eq $svc.LVSMethod "VIP" }}
+                # VIP Service with no pods: {{ $svc.IP }}
+            {{ else }}
+            # Service: {{ $svc.Name }}
+            virtual_server {{ $svc.IP }} {{ $svc.ExternalPort }} {
+              delay_loop 5
+              lvs_sched {{ $svc.LbMethod }}
+              lvs_method {{ $svc.LVSMethod }}
+              persistence_timeout {{ $svc.PersistenceTimeout  }}
+              protocol {{ $svc.Protocol }}
+
+              {{ range $j, $backend := $svc.Backends }}
+              real_server {{ $backend.IP }} {{ $svc.ContainerPort }} {
+                weight 1
+                TCP_CHECK {
+                  connect_port {{ $svc.ContainerPort }}
+                  connect_timeout 3
+                }
+              }
+              {{ end }}
+            }
+        {{ end }}
+    {{ end }}
 
 #End if vip list is empty
-{{ end }}
+    {{ end }}
 {{ end }}

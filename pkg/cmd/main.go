@@ -76,7 +76,7 @@ var (
 		"net/ipv4/vs/conntrack": 1,
 	}
 
-	vrid = flags.Int("vrid", 50,
+	vrid = flags.Int("vrid", 70,
 		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
       RFC-5798), which must be different for every Virtual Router (ie. every
       keepalived sets) running on the same network.`)

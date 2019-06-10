@@ -30,6 +30,7 @@ import (
 	"sync"
 	"syscall"
     "strconv"
+    "strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -80,18 +81,21 @@ func (c serviceByIPPort) Less(i, j int) bool {
 ////////////////////////
 //DCE customized ----
 ///////////////////////
+type l7endpoints struct {
+    Ip string
+    HttpPort int
+    HttpsPort int
+    Weight int
+
+}
+
 type globalSetting struct {
     L4VIP string
     L7VIP string
     iface string
-    L7Ep1Ip string
-    L7Ep2Ip string
-    L7Ep1HttpPort int
-    L7Ep2HttpPort int
-    L7Ep1HttpsPort int
-    L7Ep2HttpsPort int
-    L7Ep1Weight int
-    L7Ep2Weight int
+    L7HttpPort int
+    L7HttpsPort int
+    L7Ep  []l7endpoints
 }
 
 type vip struct {
@@ -212,14 +216,9 @@ func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap)
         L4VIP: "",
         L7VIP : "",
         iface : "ens192",
-        L7Ep1Ip : "",
-        L7Ep2Ip : "",
-        L7Ep1HttpPort : 80,
-        L7Ep2HttpPort : 80,
-        L7Ep1HttpsPort :443,
-        L7Ep2HttpsPort :443,
-        L7Ep1Weight :100,
-        L7Ep2Weight :100,
+        L7HttpPort:  80,
+        L7HttpsPort: 443,
+        L7Ep  : make([]l7endpoints, 0),
     }
 
     for k,v :=  range cfgMap.Data{
@@ -229,51 +228,60 @@ func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap)
         case "L7VIP":
             setting.L7VIP = v
         case "iface":
-            setting.iface= v
-        case "L7Ep1Ip":
-            setting.L7Ep1Ip= v
-        case "L7Ep2Ip":
-            setting.L7Ep2Ip= v
-        case "L7Ep1HttpPort":
+            setting.iface = v
+        case "L7HttpPort":
             intV, err := strconv.Atoi(v)
             if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k )
             }
-            setting.L7Ep1HttpPort = intV
-        case "L7Ep2HttpPort":
+            setting.L7HttpPort = intV
+        case "L7HttpsPort":
             intV, err := strconv.Atoi(v)
             if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k )
             }
-            setting.L7Ep2HttpPort = intV
-        case "L7Ep1HttpsPort":
-            intV, err := strconv.Atoi(v)
-            if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            setting.L7HttpsPort = intV
+        default :
+            // assume this is a L7 End point, key is the IP, value is multiple lines
+            ep := l7endpoints{
+                Ip : k,
+                HttpPort: 80,
+                HttpsPort: 443,
+                Weight: 1,
             }
-            setting.L7Ep1HttpsPort = intV
-        case "L7Ep2HttpsPort":
-            intV, err := strconv.Atoi(v)
-            if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
+            outstr := strings.Split(v,"\n")
+
+            for _, line := range  outstr {
+                prop := strings.Split( line,"=")
+                switch strings.ToLower(prop[0]) {
+                case "httpport":
+                    intV, err := strconv.Atoi(prop[1])
+                    if err != nil{
+                        return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", prop[1], prop[0] )
+                    }
+                    ep.HttpPort = intV
+                case "httpsport":
+                    intV, err := strconv.Atoi(prop[1])
+                    if err != nil{
+                        return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", prop[1], prop[0] )
+                    }
+                    ep.HttpsPort = intV
+                case "weight":
+                    intV, err := strconv.Atoi(prop[1])
+                    if err != nil{
+                        return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", prop[1], prop[0] )
+                    }
+                    ep.Weight = intV
+                default:
+                    return setting, fmt.Errorf("Unrecognized key in configmap :%v\n", prop[0])
+                }
             }
-            setting.L7Ep2HttpsPort = intV
-        case "L7Ep1Weight":
-            intV, err := strconv.Atoi(v)
-            if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
-            }
-            setting.L7Ep1Weight = intV
-        case "L7Ep2Weight":
-            intV, err := strconv.Atoi(v)
-            if err != nil{
-                return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k)
-            }
-            setting.L7Ep2Weight = intV
-        default:
-            return setting, fmt.Errorf("Unrecognized key in configmap :%v\n", k)
-        }
-    }
+            setting.L7Ep = append( setting.L7Ep, ep )
+
+        } // end of switch
+
+    } // end of for range cfgMap.Data
+
     return setting, nil
 }
 
@@ -404,17 +412,13 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
         return fmt.Errorf("unexpected error getting global setting from configmap %v: %v",  ipvsc.configGlobalMapName, err_gs )
     }
 
+    glog.Infof("DEBUG globalSettings =  %v\n",globalSettings)
     // override global setting ,if service setting is blank
-    for  _, svc := range svcs{
-        if svc.IP == ""{
-            svc.IP = globalSettings.L4VIP // 这边对SVC的读取是指针/引用 还是传值？
+    for  i, svc := range svcs{
+        if svc.IP == "" {
+            svcs[i].IP = globalSettings.L4VIP
         }
     }
-    //DEBUG， 验证指针还是引用
-    for  _, svc2 := range svcs{
-        glog.Info("DEBUG, svc.IP=", svc2.IP)
-    }
-
 
     // re-render the keepalived.conf 
     err := ipvsc.keepalived.WriteCfg(svcs, globalSettings)
@@ -468,6 +472,7 @@ func (ipvsc *ipvsControllerController) Start() {
 	}()
 
     glog.Info("starting Setup DNAT iptables rules")
+    ipvsc.keepalived.CleanupIptablesDNAT(true) // cleanup first, to avoid dirty enviroment . Ignore failure
     ipvsc.keepalived.SetupIptablesDNAT()
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
@@ -498,7 +503,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 		glog.Infof("shutting down controller queues")
 		close(ipvsc.stopCh)
 		go ipvsc.syncQueue.Shutdown()
-        ipvsc.keepalived.CleanupIptablesDNAT()
+        ipvsc.keepalived.CleanupIptablesDNAT(false)
 		ipvsc.keepalived.Stop()
 
 		return nil

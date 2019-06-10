@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,7 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-    "strconv"
+	"strconv"
 	"syscall"
 	"text/template"
 	"time"
@@ -50,34 +50,34 @@ var (
 )
 
 type epMetrics struct {
-    EpIp   string
-    EpPort int32
-    Conns  int
-    InPkts int
-    OutPkts  int
-    InBytes  int
-    OutBytes int
-    CPS    int
-    InPPS  int
-    OutPPS int
-    InBPS  int
-    OutBPS int
+	EpIp   string
+	EpPort int32
+	Conns  int
+	InPkts int
+	OutPkts  int
+	InBytes  int
+	OutBytes int
+	CPS    int
+	InPPS  int
+	OutPPS int
+	InBPS  int
+	OutBPS int
 }
 type vipMetrics struct {
-    Protocol string
-    Vip     string
-    Port    int32
-    Eps     []epMetrics
-    Conns  int
-    InPkts int
-    OutPkts  int
-    InBytes  int
-    OutBytes int
-    CPS    int
-    InPPS  int
-    OutPPS int
-    InBPS  int
-    OutBPS int
+	Protocol string
+	Vip     string
+	Port    int32
+	Eps     []epMetrics
+	Conns  int
+	InPkts int
+	OutPkts  int
+	InBytes  int
+	OutBytes int
+	CPS    int
+	InPPS  int
+	OutPPS int
+	InBPS  int
+	OutBPS int
 
 }
 
@@ -99,7 +99,7 @@ type keepalived struct {
 	proxyMode      bool
 	notify         string
 	releaseVips    bool
-    dnatChain      string
+	dnatChain      string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -113,9 +113,9 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 
 	k.vips = getVIPs(svcs)
 
-    if settings.iface != "" {
-        k.iface = settings.iface
-    }
+	if settings.iface != "" {
+	    k.iface = settings.iface
+	}
 
 	conf := make(map[string]interface{})
 	conf["iptablesChain"] = iptablesChain
@@ -131,6 +131,14 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 	conf["proxyMode"] = k.proxyMode
 	conf["vipIsEmpty"] = len(k.vips) == 0
 	conf["notify"] = k.notify
+
+	conf["l7vipIsEmpty"] = len(settings.L7VIP) == 0
+	conf["vrid_ingress"] = k.vrid + 1
+	conf["priority_ingress"] = 200 - k.priority
+	conf["L7VIP"] = settings.L7VIP
+	conf["L7HttpPort"] = settings.L7HttpPort
+	conf["L7HttpsPort"] = settings.L7HttpsPort
+	conf["l7eps"] = settings.L7Ep
 
 	if glog.V(2) {
 		b, _ := json.Marshal(conf)
@@ -153,7 +161,6 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 			return fmt.Errorf("unexpected error creating haproxy.cfg: %v", err)
 		}
 	}
-
 	return nil
 }
 
@@ -172,45 +179,54 @@ func getVIPs(svcs []vip) []string {
 // since LVS NAT mode doesn't do the DNAT by default, so here we set it up on host
 //====================================================
 func (k *keepalived) SetupIptablesDNAT() {
-    // Q&A:
-    // Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
-    // A: Here we setup Legacy iptables rules instead of nf_table iptable
-    iptbl := " iptables-legacy "
-    targetCidr := "0.0.0.0/0"
-    cmdStr :=  iptbl + "-t nat -N " + k.dnatChain // create a new customized chain
-    cmdStr += " && " + iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" // add a rule , DNAT all
-    cmdStr += " && " + iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain // add this custmized chain to the top of POSTROUTING chain
+	// Q&A:
+	// Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
+	// A: Here we setup Legacy iptables rules instead of nf_table iptable
+	iptbl := " iptables-legacy "
+	targetCidr := "0.0.0.0/0"
+	cmdStr :=  iptbl + "-t nat -N " + k.dnatChain // create a new customized chain
+	cmdStr += " && " + iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" // add a rule , DNAT all
+	cmdStr += " && " + iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain // add this custmized chain to the top of POSTROUTING chain
 	cmd := exec.Command("bash", "-c", cmdStr )
-	cmd.Stderr = os.Stderr
-    var out bytes.Buffer
-	cmd.Stdout = &out
+	var outs bytes.Buffer
+	var errs bytes.Buffer
+	cmd.Stdout = &outs
+	cmd.Stderr = &errs
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 		Pgid:    0,
 	}
-    if err := cmd.Run(); err != nil {
-		glog.Fatalf("Error setup iptables DNAT rules: %v", err)
+	if err := cmd.Run(); err != nil {
+		glog.Fatalf("Error setup iptables DNAT rules: %v , stdout=%v, stderr=%v\n", err, outs.String(),errs.String())
 	}
 }
 //====================================================
 // delete the customized iptables chain which keepalived-vip container set up  on host 
 //====================================================
-func (k *keepalived) CleanupIptablesDNAT() {
-    iptbl := " iptables-legacy "
-    glog.Info("cleanup dnat iptables..")
-    cmdStr :=  iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain // remove chain from POSTROUTING
-    cmdStr += "&&" + iptbl + "-t nat -F " + k.dnatChain  // flush chain
-    cmdStr += "&&" + iptbl + "-t nat -X " + k.dnatChain  // delete chain
+func (k *keepalived) CleanupIptablesDNAT(igore_error bool) {
+	iptbl := " iptables-legacy "
+	glog.Infof("cleanup dnat iptables...        (igore_error=%v)",igore_error)
+	cmdStr :=  iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain // remove chain from POSTROUTING
+	cmdStr += "||" + iptbl + "-t nat -F " + k.dnatChain  // flush chain
+	cmdStr += "||" + iptbl + "-t nat -X " + k.dnatChain  // delete chain
 	cmd := exec.Command("bash", "-c", cmdStr )
-	cmd.Stderr = os.Stderr
-    var out bytes.Buffer
-	cmd.Stdout = &out
+	var outs bytes.Buffer
+	var errs bytes.Buffer
+	cmd.Stdout = &outs
+	cmd.Stderr = &errs
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 		Pgid:    0,
 	}
-    if err := cmd.Run(); err != nil {
-		glog.Fatalf("Error clean up iptables DNAT rules: %v", err)
+	err := cmd.Run();
+
+	if err != nil {
+	    msg := fmt.Sprintf("problem encountered when clean up iptables DNAT rules: %v, stdout=%v, stderr=%v\n", err, outs.String(), errs.String())
+	    if igore_error{
+            glog.Info("Warning:" + msg)
+	    }else{
+            glog.Fatal("Error:" + msg)
+	    }
 	}
 }
 // Start starts a keepalived process in foreground.
@@ -280,69 +296,69 @@ func (k *keepalived) IsRunning() bool {
 //
 ////////////////////////////////////////////////
 func (k *keepalived) stringToInt( input []string )( []int, error){
-    ret := []int{}
-    for _, s := range input {
-       factor := 1
-       unit := strings.ToLower( string(s[len(s)-1]) )
-       switch {
-          case unit == "k" :
-              s = s[ : len(s)-1 ] //remove the unit
-              factor = 1024
-           case unit == "m" :
-              s = s[ : len(s)-1 ]
-              factor = 1024*1024
-            case unit == "g" :
-              s = s[ : len(s)-1 ]
-              factor = 1024*1024*1024
-            case unit == "t" :
-              s = s[ : len(s)-1 ]
-              factor = 1024*1024*1024*1024
-            //default:
-              //skip invalid unit check
-       }
-       v, err := strconv.Atoi(s)
-       if err != nil {
-           return ret, err
-       }
-       ret = append( ret, v * factor )
-    }
-    return ret, nil
+	ret := []int{}
+	for _, s := range input {
+	   factor := 1
+	   unit := strings.ToLower( string(s[len(s)-1]) )
+	   switch {
+	      case unit == "k" :
+	          s = s[ : len(s)-1 ] //remove the unit
+	          factor = 1024
+	       case unit == "m" :
+	          s = s[ : len(s)-1 ]
+	          factor = 1024*1024
+	        case unit == "g" :
+	          s = s[ : len(s)-1 ]
+	          factor = 1024*1024*1024
+	        case unit == "t" :
+	          s = s[ : len(s)-1 ]
+	          factor = 1024*1024*1024*1024
+	        //default:
+	          //skip invalid unit check
+	   }
+	   v, err := strconv.Atoi(s)
+	   if err != nil {
+	       return ret, err
+	   }
+	   ret = append( ret, v * factor )
+	}
+	return ret, nil
 }
 
 /////////////////////////////////////////////////////
 // the input should looks like IP:Port 0 1 2 3 4 5 6 7 8 9
 //////////////////////////////////////////////////
 func (k *keepalived) decodeMetricsLine( input []string )( ip string, port int32, values []int,  err error){
-    if len(input) != 11 {
-        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: input array length invalid = %d", input)
-    }
-    ipPort := input[0]
-    ipAndPort  := strings.Split( ipPort, ":" )
-    ip   = ipAndPort[0]
-    portInt := 0
-    portInt, err = strconv.Atoi(  ipAndPort[1] )
-    port = int32(portInt)
-    if err != nil {
-        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert VIP port to int : %v" , ipAndPort[1])
-    }
-    port = int32(port)
-    values , err  = k.stringToInt( input[1:] )
-    if err != nil {
-        return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert values to int %v", input[2:6] )
-    }
-    return ip, port, values, nil
+	if len(input) != 11 {
+	    return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: input array length invalid = %d", input)
+	}
+	ipPort := input[0]
+	ipAndPort  := strings.Split( ipPort, ":" )
+	ip   = ipAndPort[0]
+	portInt := 0
+	portInt, err = strconv.Atoi(  ipAndPort[1] )
+	port = int32(portInt)
+	if err != nil {
+	    return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert VIP port to int : %v" , ipAndPort[1])
+	}
+	port = int32(port)
+	values , err  = k.stringToInt( input[1:] )
+	if err != nil {
+	    return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: failed to convert values to int %v", input[2:6] )
+	}
+	return ip, port, values, nil
 
 }
 
 ////////////////////////////////////////////////////////////
 func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	var out bytes.Buffer
-    cmdStr :=  "export F1=/tmp/m1 && export F2=/tmp/m2 "
-    cmdStr +=   "&& ipvsadm -Ln  --stats | tail -n +4  > $F1 " // skip first 3 lines of header, and echo to $F1
-    cmdStr +=   "&& ipvsadm -Ln  --rate  | tail -n +4 | awk '{print $3 \"\\t\" $4 \"\\t\" $5 \"\\t\" $6 \"\\t\" $7 }' > $F2" // skip IP/port columes
-    cmdStr +=   "&& paste -d\"\\t\" $F1  $F2 " // concat two file vertically
-    //cmdStr +=   " && rm $F1 $F2" // to speed up, not to remove them..
-    glog.Infof("metrics command : %s\n", cmdStr)
+	cmdStr :=  "export F1=/tmp/m1 && export F2=/tmp/m2 "
+	cmdStr +=   "&& ipvsadm -Ln  --stats | tail -n +4  > $F1 " // skip first 3 lines of header, and echo to $F1
+	cmdStr +=   "&& ipvsadm -Ln  --rate  | tail -n +4 | awk '{print $3 \"\\t\" $4 \"\\t\" $5 \"\\t\" $6 \"\\t\" $7 }' > $F2" // skip IP/port columes
+	cmdStr +=   "&& paste -d\"\\t\" $F1  $F2 " // concat two file vertically
+	//cmdStr +=   " && rm $F1 $F2" // to speed up, not to remove them..
+	glog.Infof("metrics command : %s\n", cmdStr)
 	cmd := exec.Command("bash", "-c", cmdStr )
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = &out
@@ -351,70 +367,70 @@ func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 		Pgid:    0,
 	}
 
-    err = cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return metricsList, err
 	}
 
-    outstr := strings.Split(out.String(), "\n")
+	outstr := strings.Split(out.String(), "\n")
 
-    cnt := -1
-    for _, line := range outstr {
-        if len(line) <=1 {
-            continue;
-        }
-        if ( ! strings.Contains(line, "->") ) {
-            // vip line: TCP  10.6.111.111:40002  0 0 0 0 0...
-            metcs := vipMetrics{}
-            arr := strings.Fields(line)
-            metcs.Protocol = arr[0]
-            values := []int{}
-            metcs.Vip, metcs.Port, values, err = k.decodeMetricsLine( arr[1:] )
-            if err != nil {
-                return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
-            }
-            metcs.Conns   = values[0]
-            metcs.InPkts  = values[1]
-            metcs.OutPkts = values[2]
-            metcs.InBytes = values[3]
-            metcs.OutBytes = values[4]
+	cnt := -1
+	for _, line := range outstr {
+	    if len(line) <=1 {
+	        continue;
+	    }
+	    if ( ! strings.Contains(line, "->") ) {
+	        // vip line: TCP  10.6.111.111:40002  0 0 0 0 0...
+	        metcs := vipMetrics{}
+	        arr := strings.Fields(line)
+	        metcs.Protocol = arr[0]
+	        values := []int{}
+	        metcs.Vip, metcs.Port, values, err = k.decodeMetricsLine( arr[1:] )
+	        if err != nil {
+	            return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+	        }
+	        metcs.Conns   = values[0]
+	        metcs.InPkts  = values[1]
+	        metcs.OutPkts = values[2]
+	        metcs.InBytes = values[3]
+	        metcs.OutBytes = values[4]
 
-            metcs.CPS    = values[5]
-            metcs.InPPS  = values[6]
-            metcs.OutPPS = values[7]
-            metcs.InBPS  = values[8]
-            metcs.OutBPS = values[9]
+	        metcs.CPS    = values[5]
+	        metcs.InPPS  = values[6]
+	        metcs.OutPPS = values[7]
+	        metcs.InBPS  = values[8]
+	        metcs.OutBPS = values[9]
 
-            metricsList = append( metricsList, metcs )
-            cnt ++
-        }else{
-            if (cnt < 0){
-                return metricsList, fmt.Errorf("ipvsadm parsing error: endpoint should follow the vip line.output= %v", outstr)
-            }
-            // ep lines  :   -> 172.28.210.141:80  0 0  0  0  0
-            epM := epMetrics{}
-            arr := strings.Fields(line)
-            values := []int{}
-            epM.EpIp, epM.EpPort, values, err = k.decodeMetricsLine( arr[1:] )
-            if err != nil {
-                return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
-            }
-            epM.Conns   = values[0]
-            epM.InPkts  = values[1]
-            epM.OutPkts = values[2]
-            epM.InBytes = values[3]
-            epM.OutBytes = values[4]
+	        metricsList = append( metricsList, metcs )
+	        cnt ++
+	    }else{
+	        if (cnt < 0){
+	            return metricsList, fmt.Errorf("ipvsadm parsing error: endpoint should follow the vip line.output= %v", outstr)
+	        }
+	        // ep lines  :   -> 172.28.210.141:80  0 0  0  0  0
+	        epM := epMetrics{}
+	        arr := strings.Fields(line)
+	        values := []int{}
+	        epM.EpIp, epM.EpPort, values, err = k.decodeMetricsLine( arr[1:] )
+	        if err != nil {
+	            return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+	        }
+	        epM.Conns   = values[0]
+	        epM.InPkts  = values[1]
+	        epM.OutPkts = values[2]
+	        epM.InBytes = values[3]
+	        epM.OutBytes = values[4]
 
-            epM.CPS    = values[5]
-            epM.InPPS  = values[6]
-            epM.OutPPS = values[7]
-            epM.InBPS  = values[8]
-            epM.OutBPS = values[9]
+	        epM.CPS    = values[5]
+	        epM.InPPS  = values[6]
+	        epM.OutPPS = values[7]
+	        epM.InBPS  = values[8]
+	        epM.OutBPS = values[9]
 
-            metricsList[cnt].Eps = append( metricsList[cnt].Eps, epM )
-        }
-    }
-    return metricsList, nil
+	        metricsList[cnt].Eps = append( metricsList[cnt].Eps, epM )
+	    }
+	}
+	return metricsList, nil
 }
 
 // Whether keepalived child process is currently running and VIPs are assigned
