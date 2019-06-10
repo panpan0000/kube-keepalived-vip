@@ -134,12 +134,14 @@ type ipvsControllerController struct {
 	client *kubernetes.Clientset
 
 	epController  cache.Controller
-	mapController cache.Controller
+	map1Controller cache.Controller
+	map2Controller cache.Controller
 	svcController cache.Controller
 
 	svcLister store.ServiceLister
 	epLister  store.EndpointLister
-	mapLister store.ConfigMapLister
+	map1Lister store.ConfigMapLister
+	map2Lister store.ConfigMapLister
 
 	reloadRateLimiter flowcontrol.RateLimiter
 
@@ -374,7 +376,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	}
 	cfgMap_svc, err_gsvc := ipvsc.getConfigMap(ns_svc, name_svc)
 	if err_gsvc != nil {
-		return fmt.Errorf("unexpected error searching configmap %v/%v: %v", ns_svc, name_svc , err_gsvc)
+		return fmt.Errorf("unexpected error searching service configmap %v/%v: %v", ns_svc, name_svc , err_gsvc)
 	}
 
 	glog.V(2).Infof("ConfigMap Service =%v",cfgMap_svc)
@@ -388,7 +390,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	}
 	cfgMap_gb, err_ggb := ipvsc.getConfigMap(ns_gb, name_gb)
 	if err_ggb != nil {
-		return fmt.Errorf("unexpected error searching configmap %v/%v: %v", ns_gb, name_gb, err_ggb)
+		return fmt.Errorf("unexpected error searching global setup configmap %v/%v: %v", ns_gb, name_gb, err_ggb)
 	}
 
 	glog.V(2).Infof("ConfigMap Global =%v",cfgMap_gb)
@@ -440,7 +442,8 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 func (ipvsc *ipvsControllerController) Start() {
 	go ipvsc.epController.Run(ipvsc.stopCh)
 	go ipvsc.svcController.Run(ipvsc.stopCh)
-	go ipvsc.mapController.Run(ipvsc.stopCh)
+	go ipvsc.map1Controller.Run(ipvsc.stopCh)
+	go ipvsc.map2Controller.Run(ipvsc.stopCh)
 
 	go ipvsc.syncQueue.Run(time.Second, ipvsc.stopCh)
 
@@ -450,7 +453,8 @@ func (ipvsc *ipvsControllerController) Start() {
 	if !cache.WaitForCacheSync(ipvsc.stopCh,
 		ipvsc.epController.HasSynced,
 		ipvsc.svcController.HasSynced,
-		ipvsc.mapController.HasSynced,
+		ipvsc.map1Controller.HasSynced,
+		ipvsc.map2Controller.HasSynced,
 	) {
 		runtime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
 	}
@@ -612,12 +616,12 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		glog.Fatalf("Error parsing configmap name: %v", err_gb)
 	}
 
-	ipvsc.mapLister.Store, ipvsc.mapController = cache.NewInformer(
+	ipvsc.map1Lister.Store, ipvsc.map1Controller = cache.NewInformer(
 		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns_svc,
 			fields.OneTermEqualSelector(api.ObjectNameField, cmn_svc)),
 		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
 
-	ipvsc.mapLister.Store, ipvsc.mapController = cache.NewInformer(
+	ipvsc.map2Lister.Store, ipvsc.map2Controller = cache.NewInformer(
 		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns_gb,
 			fields.OneTermEqualSelector(api.ObjectNameField, cmn_gb)),
 		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
@@ -653,14 +657,24 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 }
 
 func (ipvsc *ipvsControllerController) getConfigMap(ns, name string) (*apiv1.ConfigMap, error) {
-	s, exists, err := ipvsc.mapLister.Store.GetByKey(fmt.Sprintf("%v/%v", ns, name))
-	if err != nil {
-		return nil, err
+	s1, exists1, err1 := ipvsc.map1Lister.Store.GetByKey(fmt.Sprintf("%v/%v", ns, name))
+	s2, exists2, err2 := ipvsc.map2Lister.Store.GetByKey(fmt.Sprintf("%v/%v", ns, name))
+
+	if err1 != nil {
+		return nil, err1
 	}
-	if !exists {
+
+	if err2 != nil {
+		return nil, err2
+	}
+	if !exists1 && !exists2  {
 		return nil, fmt.Errorf("configmap %v/%v was not found",  ns, name)
 	}
-	return s.(*apiv1.ConfigMap), nil
+    if exists1 {
+	    return s1.(*apiv1.ConfigMap), nil
+    } else {
+	    return s2.(*apiv1.ConfigMap), nil
+    }
 }
 
 func checksum(filename string) (string, error) {
