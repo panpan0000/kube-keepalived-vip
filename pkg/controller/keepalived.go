@@ -179,26 +179,24 @@ func getVIPs(svcs []vip) []string {
 // since LVS NAT mode doesn't do the DNAT by default, so here we set it up on host
 //====================================================
 func (k *keepalived) SetupIptablesDNAT() {
+    glog.Infof("set up dnat iptables...     ")
 	// Q&A:
 	// Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
 	// A: Here we setup Legacy iptables rules instead of nf_table iptable
 	iptbl := " iptables-legacy "
 	targetCidr := "0.0.0.0/0"
-	cmdStr :=  iptbl + "-t nat -N " + k.dnatChain // create a new customized chain
-	cmdStr += " && " + iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" // add a rule , DNAT all
-	cmdStr += " && " + iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain // add this custmized chain to the top of POSTROUTING chain
-	cmd := exec.Command("bash", "-c", cmdStr )
-	var outs bytes.Buffer
-	var errs bytes.Buffer
-	cmd.Stdout = &outs
-	cmd.Stderr = &errs
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-		Pgid:    0,
-	}
-	if err := cmd.Run(); err != nil {
-		glog.Fatalf("Error setup iptables DNAT rules: %v , stdout=%v, stderr=%v\n", err, outs.String(),errs.String())
-	}
+    errPrefix := "Error setup iptables DNAT rules"
+    cmdList := []string{
+        iptbl + "-t nat -N " + k.dnatChain, // 1.create a new customized chain
+        iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" ,// 2. add a rule , DNAT all
+        iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain, // 3. add this custmized chain to the top of POSTROUTING chain
+    }
+    for _,cmdStr := range cmdList {
+        err, outMsg, errMsg := execShellCommand( cmdStr )
+        if err != nil {
+            glog.Fatalf( errPrefix + "(%v): %v , stdout=%v, stderr=%v\n", cmdStr, err, outMsg, errMsg )
+        }
+    }
 }
 //====================================================
 // delete the customized iptables chain which keepalived-vip container set up  on host 
@@ -206,28 +204,25 @@ func (k *keepalived) SetupIptablesDNAT() {
 func (k *keepalived) CleanupIptablesDNAT(igore_error bool) {
 	iptbl := " iptables-legacy "
 	glog.Infof("cleanup dnat iptables...        (igore_error=%v)",igore_error)
-	cmdStr :=  iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain // remove chain from POSTROUTING
-	cmdStr += "||" + iptbl + "-t nat -F " + k.dnatChain  // flush chain
-	cmdStr += "||" + iptbl + "-t nat -X " + k.dnatChain  // delete chain
-	cmd := exec.Command("bash", "-c", cmdStr )
-	var outs bytes.Buffer
-	var errs bytes.Buffer
-	cmd.Stdout = &outs
-	cmd.Stderr = &errs
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-		Pgid:    0,
-	}
-	err := cmd.Run();
+    errPrefix := "problem encountered when cleanup iptables DNAT rules"
 
-	if err != nil {
-	    msg := fmt.Sprintf("problem encountered when clean up iptables DNAT rules: %v, stdout=%v, stderr=%v\n", err, outs.String(), errs.String())
-	    if igore_error{
-            glog.Info("Warning:" + msg)
-	    }else{
-            glog.Fatal("Error:" + msg)
-	    }
-	}
+    cmdList := []string{
+        iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain, // remove chain from POSTROUTING
+	    iptbl + "-t nat -F " + k.dnatChain,  // flush chain
+	    iptbl + "-t nat -X " + k.dnatChain,  // delete chain
+    }
+    for _,cmdStr := range cmdList {
+        err, outMsg, errMsg := execShellCommand( cmdStr )
+        if err != nil {
+            msg := fmt.Sprintf(errPrefix + "(%v): %v , stdout=%v, stderr=%v\n", cmdStr, err, outMsg, errMsg)
+            if igore_error{
+                glog.Info("Warning(ignore error):" + msg)
+            } else {
+                glog.Fatalf("Error:" + msg)
+            }
+        }
+
+    }
 }
 // Start starts a keepalived process in foreground.
 // In case of any error it will terminate the execution with a fatal error

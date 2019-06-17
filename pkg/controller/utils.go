@@ -17,12 +17,15 @@ limitations under the License.
 package controller
 
 import (
+    "bytes"
 	"fmt"
 	"net"
+    "os/exec"
 	"regexp"
 	"sort"
 	"strings"
     "strconv"
+    "syscall"
 
 	"github.com/golang/glog"
 
@@ -233,6 +236,25 @@ func parseAddress(address string) (string, int32, string, error) {
         return "", 0, "",fmt.Errorf("invalid: address string: %q, port value should be int", address)
     }
     return ip, int32(extPort), iface, nil
+}
+//====================================
+//
+// Execute Shell command
+//
+//===================================
+func execShellCommand( myCmd string ) (error, string, string ) {
+    var outs bytes.Buffer
+    var errs bytes.Buffer
+    cmd := exec.Command( "bash", "-c", myCmd )
+    cmd.Stdout = &outs
+    cmd.Stderr = &errs
+    cmd.SysProcAttr = &syscall.SysProcAttr{
+        Setpgid: true,
+        Pgid:    0,
+
+    }
+    err := cmd.Run();
+    return err, outs.String(), errs.String()
 }
 
 func parseL4Config(input string) ( svcConfig, error) {
