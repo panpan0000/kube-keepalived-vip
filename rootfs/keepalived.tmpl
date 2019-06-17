@@ -12,7 +12,7 @@ global_defs {
       state BACKUP
       virtual_router_id {{ .vrid_ingress }}
       priority {{ .priority_ingress }}
-      nopreempt
+      preempt
       advert_int 1
 
       track_interface {
@@ -113,7 +113,7 @@ global_defs {
       interface {{ $iface }}
       virtual_router_id {{ .vrid }}
       priority {{ .priority }}
-      nopreempt
+      preempt
       advert_int 1
 
       track_interface {
