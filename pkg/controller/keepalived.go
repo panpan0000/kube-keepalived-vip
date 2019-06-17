@@ -100,6 +100,8 @@ type keepalived struct {
 	notify         string
 	releaseVips    bool
 	dnatChain      string
+    dnatExceptionKey string
+    l7vips         []string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -174,6 +176,60 @@ func getVIPs(svcs []vip) []string {
 
 	return result
 }
+
+//----------------------------------------------------
+// Update the L7 exception rules in iptables customized chain
+//---------------------------------------------------
+func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
+    if ( len(currentL7Vips) == len( k.l7vips) ){
+        changesDetected := false
+        for _, newIP := range currentL7Vips{
+            thisIPChanged := true
+            for _, oldIP := range k.l7vips {
+                if oldIP == newIP{
+                    thisIPChanged = false
+                    break
+                }
+            }
+            if thisIPChanged {
+                changesDetected = true
+                break;
+            }
+        }
+        if changesDetected == false {
+            return nil
+        }
+    }
+    glog.Infof("Info: Detected changes in currentL7Vips:  old =%v, new =%v\n", k.l7vips, currentL7Vips)
+
+    // Copy new array to old
+    k.l7vips= make( []string,len(currentL7Vips) )
+    n := copy( k.l7vips,  currentL7Vips )
+    if n != len(currentL7Vips) {
+        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7vips, copied elements = %d\n", n)
+    }
+
+    removeOldRulesCmd := "iptables-legacy-save | grep -v " +  k.dnatExceptionKey + " | iptables-legacy-restore " // remove old rules matched the comments "$k.dnatExceptionKey"
+    cmds := []string { removeOldRulesCmd }
+    iptbl := " iptables-legacy "
+    //Compare currentL7Vips and old record, to determine whether to update iptables
+    for _,ip :=range k.l7vips {
+        // insert new rules to the top
+        insertCmd :=  iptbl + " -t nat -I " + k.dnatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.dnatExceptionKey + "\""
+        cmds = append( cmds, insertCmd )
+    }
+    for _,cmdStr := range cmds {
+        err, outMsg, errMsg := execShellCommand( cmdStr )
+        if err != nil {
+            glog.Errorf( "InsertL7ExceptionRules Failure: (%v): %v , stdout=%v, stderr=%v\n", cmdStr, err, outMsg, errMsg )
+            return err
+        }
+    }
+    glog.Info("Info: Update new rules into iptables for new L7 VIPS : Done")
+    return nil
+}
+
+
 
 //====================================================
 // since LVS NAT mode doesn't do the DNAT by default, so here we set it up on host

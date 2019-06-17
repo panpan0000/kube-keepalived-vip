@@ -222,29 +222,29 @@ func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap)
     }
 
     for k,v :=  range cfgMap.Data{
-        switch k {
-        case "L4VIP":
+        switch  {
+        case k == "L4VIP":
             setting.L4VIP = v
-        case "L7VIP":
+        case k == "L7VIP":
             setting.L7VIP = v
-        case "iface":
+        case k == "iface":
             setting.iface = v
-        case "L7HttpPort":
+        case k == "L7HttpPort":
             intV, err := strconv.Atoi(v)
             if err != nil{
                 return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k )
             }
             setting.L7HttpPort = intV
-        case "L7HttpsPort":
+        case k == "L7HttpsPort":
             intV, err := strconv.Atoi(v)
             if err != nil{
                 return setting, fmt.Errorf("Invalid numberic value= %v,for key %v in configmap \n", v, k )
             }
             setting.L7HttpsPort = intV
-        default :
-            // assume this is a L7 End point, key is the IP, value is multiple lines
+        case strings.Contains(k,"instance"):
+           // assume this is a L7 End point, key is the IP, value is multiple lines
             ep := l7endpoints{
-                Ip : k,
+                Ip : "",
                 HttpPort: 80,
                 HttpsPort: 443,
                 Weight: 1,
@@ -254,6 +254,8 @@ func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap)
             for _, line := range  outstr {
                 prop := strings.Split( line,"=")
                 switch strings.ToLower(prop[0]) {
+                case "ip":
+                    ep.Ip = prop[1]
                 case "httpport":
                     intV, err := strconv.Atoi(prop[1])
                     if err != nil{
@@ -276,8 +278,18 @@ func (ipvsc *ipvsControllerController) getGlobalSetting(cfgMap *apiv1.ConfigMap)
                     return setting, fmt.Errorf("Unrecognized key in configmap :%v\n", prop[0])
                 }
             }
+            if ep.Ip == ""{
+                return setting, fmt.Errorf(" IP should not be blank for L7 endpoint in configMap, key=%v \n", k )
+            }
             setting.L7Ep = append( setting.L7Ep, ep )
 
+            //sort it to guarrentee order, to avoid Config file keeping changed
+            sort.Slice( setting.L7Ep, func(i, j int) bool {
+                    return strings.Compare( setting.L7Ep[i].Ip , setting.L7Ep[j].Ip ) > 0
+            })
+
+        default:
+            return setting, fmt.Errorf("Unrecognized key %v in global configmap ", k)
         } // end of switch
 
     } // end of for range cfgMap.Data
@@ -413,6 +425,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
     }
 
     glog.Infof("DEBUG globalSettings =  %v\n",globalSettings)
+
     // override global setting ,if service setting is blank
     for  i, svc := range svcs{
         if svc.IP == "" {
@@ -438,6 +451,16 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	if err != nil {
 		glog.Errorf("error reloading keepalived: %v", err)
 	}
+
+    //DCE Customized: Update the L7 Exception Rules in iptables
+    l7Vips := []string{}
+    for _, l7ep := range globalSettings.L7Ep{
+        l7Vips = append(l7Vips, l7ep.Ip)
+    }
+    errL7Rule := ipvsc.keepalived.UpdateL7ExceptionRules( l7Vips )
+    if errL7Rule != nil{
+        glog.Errorf("Error when UpdateL7ExceptionRules: %v", errL7Rule)
+    }
 
 	return nil
 }
@@ -567,6 +590,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		notify:     notify,
 		releaseVips: releaseVips,
         dnatChain : "DCE_L4_DNAT_CHAIN",
+        dnatExceptionKey: "DCE_L7_EXCEPTION_RULES",
 	}
 
 	ipvsc.syncQueue = task.NewTaskQueue(ipvsc.sync)
@@ -597,6 +621,12 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 			ipvsc.syncQueue.Enqueue(obj)
 		},
 		UpdateFunc: func(old, cur interface{}) {
+            if old.(*apiv1.Endpoints).Namespace == "kube-system" &&
+            (   old.(*apiv1.Endpoints).Name == "kube-controller-manaer" ||
+                old.(*apiv1.Endpoints).Name == "kube-scheduler" ) {
+                // skip when ep changed in kube-system. due to kube-controller-manaer/kube-scheduler gets updated every second
+                return
+            }
 			if !reflect.DeepEqual(old, cur) {
 				ipvsc.syncQueue.Enqueue(cur)
 			}
