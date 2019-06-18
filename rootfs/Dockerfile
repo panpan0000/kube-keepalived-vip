@@ -13,7 +13,8 @@
 # limitations under the License.
 
 FROM quay.io/kubernetes-ingress-controller/debian-base-amd64:0.1
-ADD https://mirrors.ustc.edu.cn/repogen/conf/debian-http-4-buster /etc/apt/sources.list
+#ADD https://mirrors.ustc.edu.cn/repogen/conf/debian-http-4-buster /etc/apt/sources.list
+COPY sources.list /etc/apt/sources.list
 RUN clean-install \
   libssl1.1 \
   libnl-3-200 \
@@ -24,7 +25,8 @@ RUN clean-install \
   libnfnetlink0 \
   libiptcdata0 \
   libipset11 \
-  libipset-dev \
+  libipset-dev
+RUN clean-install \
   libsnmp30 \
   kmod \
   ca-certificates \

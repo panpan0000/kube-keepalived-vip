@@ -14,7 +14,8 @@
 
 FROM quay.io/kubernetes-ingress-controller/debian-base-amd64:0.1
 
-ADD https://mirrors.ustc.edu.cn/repogen/conf/debian-http-4-buster /etc/apt/sources.list
+COPY sources.list /etc/apt/sources.list 
+#ADD https://mirrors.ustc.edu.cn/repogen/conf/debian-http-4-buster /etc/apt/sources.list
 
 COPY build.sh /build.sh
 
