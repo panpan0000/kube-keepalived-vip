@@ -453,11 +453,11 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	}
 
     //DCE Customized: Update the L7 Exception Rules in iptables
-    l7Vips := []string{}
+    l7eps := []string{}
     for _, l7ep := range globalSettings.L7Ep{
-        l7Vips = append(l7Vips, l7ep.Ip)
+        l7eps = append( l7eps, l7ep.Ip)
     }
-    errL7Rule := ipvsc.keepalived.UpdateL7ExceptionRules( l7Vips )
+    errL7Rule := ipvsc.keepalived.UpdateL7ExceptionRules( l7eps )
     if errL7Rule != nil{
         glog.Errorf("Error when UpdateL7ExceptionRules: %v", errL7Rule)
     }

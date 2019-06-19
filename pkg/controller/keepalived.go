@@ -91,6 +91,7 @@ type keepalived struct {
 	useUnicast     bool
 	started        bool
 	vips           []string
+    l7vip          string
 	keepalivedTmpl *template.Template
 	haproxyTmpl    *template.Template
 	cmd            *exec.Cmd
@@ -101,7 +102,7 @@ type keepalived struct {
 	releaseVips    bool
 	dnatChain      string
     dnatExceptionKey string
-    l7vips         []string
+    l7eps         []string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -114,7 +115,7 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 	defer w.Close()
 
 	k.vips = getVIPs(svcs)
-
+    k.l7vip = settings.L7VIP
 	if settings.iface != "" {
 	    k.iface = settings.iface
 	}
@@ -185,11 +186,11 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
 
     //FIXME, should check if rules missing. len(existing rule) == len(l7Vips)
 
-    if ( len(currentL7Vips) == len( k.l7vips) ){
+    if ( len(currentL7Vips) == len( k.l7eps) ){
         changesDetected := false
         for _, newIP := range currentL7Vips{
             thisIPChanged := true
-            for _, oldIP := range k.l7vips {
+            for _, oldIP := range k.l7eps {
                 if oldIP == newIP{
                     thisIPChanged = false
                     break
@@ -204,7 +205,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
             return nil
         }
     }
-    glog.Infof("Info: Detected changes in currentL7Vips:  old =%v, new =%v\n", k.l7vips, currentL7Vips)
+    glog.Infof("Info: Detected changes in currentL7Vips:  old =%v, new =%v\n", k.l7eps, currentL7Vips)
 
 
 
@@ -212,7 +213,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     cmds := []string { removeOldRulesCmd }
     iptbl := " iptables-legacy "
     //Compare currentL7Vips and old record, to determine whether to update iptables
-    for _,ip :=range k.l7vips {
+    for _,ip :=range k.l7eps {
         // insert new rules to the top
         insertCmd :=  iptbl + " -t nat -I " + k.dnatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.dnatExceptionKey + "\""
         cmds = append( cmds, insertCmd )
@@ -226,10 +227,10 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     }
 
     // Copy new array to old
-    k.l7vips= make( []string,len(currentL7Vips) )
-    n := copy( k.l7vips,  currentL7Vips )
+    k.l7eps= make( []string,len(currentL7Vips) )
+    n := copy( k.l7eps,  currentL7Vips )
     if n != len(currentL7Vips) {
-        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7vips, copied elements = %d\n", n)
+        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7eps, copied elements = %d\n", n)
     }
 
     
@@ -545,14 +546,11 @@ func (k *keepalived) Healthy() error {
     for _, vip := range k.vips {
         containsVip := strings.Contains( outMsg, vip )
         if !containsVip{
-            return fmt.Errorf("Error: Missing VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
+            return fmt.Errorf("Error: Missing L4 VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
         }
     }
-    for _, vip := range k.l7vips {
-        containsVip := strings.Contains( outMsg, vip )
-        if !containsVip{
-            return fmt.Errorf("Error: Missing VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
-        }
+    if !  strings.Contains( outMsg, k.l7vip ) {
+       return fmt.Errorf("Error: Missing L7 VIP rule for L7 endpoint :%s on ipvsadm rules list %s", k.l7vip, outMsg )
     }
 
 	// All checks successful
