@@ -1,0 +1,166 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dce-keepalived-10.6.111.101
+  namespace: kube-system
+data:
+  10.6.111.101-40001-ens192: |-
+    service=default/nginx-nginx
+    port=80
+    lbAlgo=rr
+    lvKind=NAT
+    persistence_timeout=10
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vip-global-setup-10.6.111.101
+  namespace: kube-system
+data:
+  L4VIP: 10.6.111.101
+  L7VIP: 10.6.111.121
+  iface: ens192
+  L7HttpPort: "8080"
+  L7HttpsPort: "8443"
+  instance1: |-
+    IP=10.6.111.46
+    HttpPort=80
+    HttpsPort=443
+    Weight=100
+  instance1: |-
+    IP=10.6.111.45
+    HttpPort=80
+    HttpsPort=443
+    Weight=100
+
+
+---
+apiVersion: v1
+kind: ServiceAccount  
+metadata:
+  name: kube-keepalived-vip
+  namespace: kube-system
+secrets:
+- name: kube-keepalived-vip-token-4kzkh
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: kube-keepalived-vip
+rules:
+  - apiGroups: [""]
+    resources:
+    - pods
+    - nodes
+    - endpoints
+    - services
+    - configmaps
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-keepalived-vip
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-keepalived-vip
+subjects:
+  - kind: ServiceAccount
+    name: kube-keepalived-vip
+    namespace: kube-system
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-keepalived-vip
+  namespace: kube-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: kube-keepalived-vip
+  template:
+    metadata:
+      labels:
+        name: kube-keepalived-vip
+        io.daocloud.dce.loadbalancer.role: keepalived
+    spec:
+      hostNetwork: true
+      serviceAccount: kube-keepalived-vip
+      containers:
+        - image: daocloud.io/daocloud/kube-keepalived-vip:0.3.58
+          name: kube-keepalived-vip
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 15
+            timeoutSeconds: 3
+          resources:
+             limits:
+               cpu: 500m
+               memory: 500Mi
+             requests:
+               cpu: 100m
+               memory: 500Mi
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /lib/modules
+              name: modules
+              readOnly: true
+            - mountPath: /dev
+              name: dev
+          # use downward API
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          # to use unicast
+          args:
+            - -v=5
+            - --services-configmap=kube-system/dce-keepalived-10.6.111.101
+            - --global-configmap=kube-system/vip-global-setup-10.6.111.101
+            -  --iface=ens192
+            -  --http-port=8081
+            -  --add-iptables-dnat=true
+            # unicast uses the ip of the nodes instead of multicast
+            # this is useful if running in cloud providers (like AWS)
+            #- --use-unicast=true
+      volumes:
+        - name: modules
+          hostPath:
+            path: /lib/modules
+        - name: dev
+          hostPath:
+            path: /dev
+      #nodeSelector:
+      #  type: worker
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - l4-slave-45
+                      - l4-slave-46
+
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: io.daocloud.dce.loadbalancer.role
+                operator: In
+                values:
+                - keepalived
+            topologyKey: kubernetes.io/hostname
