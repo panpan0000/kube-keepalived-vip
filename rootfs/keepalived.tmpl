@@ -25,7 +25,7 @@ global_defs {
 
       authentication {
             auth_type PASS
-            auth_pass dce-ingress
+            auth_pass dce-ingr
       }
 
       virtual_ipaddress {
@@ -54,6 +54,13 @@ global_defs {
             connect_timeout 3
             delay_before_retry 1
           }
+          HTTP_GET {
+              url {
+                  path /
+              }
+              connect_timeout 3
+              delay_before_retry 3
+          }
         }
         {{ end }}
     }
@@ -74,12 +81,11 @@ global_defs {
             connect_timeout 3
             delay_before_retry 1
           }
-          HTTP_GET {
+          SSL_GET {
               url {
                   path /
               }
               connect_timeout 3
-              nb_get_retry 3
               delay_before_retry 3
           }
         }

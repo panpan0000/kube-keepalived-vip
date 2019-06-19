@@ -90,7 +90,7 @@ spec:
       hostNetwork: true
       serviceAccount: kube-keepalived-vip
       containers:
-        - image: daocloud.io/daocloud/kube-keepalived-vip:0.3.58
+        - image: daocloud.io/daocloud/kube-keepalived-vip:0.34-dce
           name: kube-keepalived-vip
           imagePullPolicy: Always
           livenessProbe:
