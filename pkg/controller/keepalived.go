@@ -181,6 +181,10 @@ func getVIPs(svcs []vip) []string {
 // Update the L7 exception rules in iptables customized chain
 //---------------------------------------------------
 func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
+
+
+    //FIXME, should check if rules missing. len(existing rule) == len(l7Vips)
+
     if ( len(currentL7Vips) == len( k.l7vips) ){
         changesDetected := false
         for _, newIP := range currentL7Vips{
@@ -202,12 +206,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     }
     glog.Infof("Info: Detected changes in currentL7Vips:  old =%v, new =%v\n", k.l7vips, currentL7Vips)
 
-    // Copy new array to old
-    k.l7vips= make( []string,len(currentL7Vips) )
-    n := copy( k.l7vips,  currentL7Vips )
-    if n != len(currentL7Vips) {
-        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7vips, copied elements = %d\n", n)
-    }
+
 
     removeOldRulesCmd := "iptables-legacy-save | grep -v " +  k.dnatExceptionKey + " | iptables-legacy-restore " // remove old rules matched the comments "$k.dnatExceptionKey"
     cmds := []string { removeOldRulesCmd }
@@ -225,6 +224,15 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
             return err
         }
     }
+
+    // Copy new array to old
+    k.l7vips= make( []string,len(currentL7Vips) )
+    n := copy( k.l7vips,  currentL7Vips )
+    if n != len(currentL7Vips) {
+        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7vips, copied elements = %d\n", n)
+    }
+
+    
     glog.Info("Info: Update new rules into iptables for new L7 VIPS : Done")
     return nil
 }
@@ -531,6 +539,21 @@ func (k *keepalived) Healthy() error {
 			return fmt.Errorf("%s should not contain VIP %s", state, vip)
 		}
 	}
+    //check if ipvsadm -L -n still contains the VIP items
+    cmdStr := "ipvsadm -L -n "
+    _, outMsg, _ := execShellCommand( cmdStr )
+    for _, vip := range k.vips {
+        containsVip := strings.Contains( outMsg, vip )
+        if !containsVip{
+            return fmt.Errorf("Error: Missing VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
+        }
+    }
+    for _, vip := range k.l7vips {
+        containsVip := strings.Contains( outMsg, vip )
+        if !containsVip{
+            return fmt.Errorf("Error: Missing VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
+        }
+    }
 
 	// All checks successful
 	return nil
