@@ -114,6 +114,10 @@ spec:
               readOnly: true
             - mountPath: /dev
               name: dev
+            - mountPath: /var/log
+              name: log-dir
+            - mountPath: /etc/timezone
+              name: tz
           # use downward API
           env:
             - name: POD_NAME
@@ -142,6 +146,12 @@ spec:
         - name: dev
           hostPath:
             path: /dev
+        - name: log-dir
+          hostPath:
+            path: /var/log
+        - name: tz
+          hostPath:
+            path: /etc/timezone
       #nodeSelector:
       #  type: worker
       affinity:

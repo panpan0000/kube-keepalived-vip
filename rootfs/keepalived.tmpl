@@ -37,8 +37,8 @@ global_defs {
       {{ $OneEndPoint := index .l7eps 0  }}
       # strategic routing table. enable when as backup, clean when as master
       # NOTE: <DANGEROUS> here, we assume the real server are all using the same http/https port!!
-      notify_backup "/root/routing.sh backup {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
-      notify_master "/root/routing.sh master {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
+      notify_backup "/routing.sh BACKUP  {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
+      notify_master "/routing.sh MASTER  {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
     }
 # HTTP
     virtual_server {{ $L7VIP }} {{ .L7HttpPort }} {

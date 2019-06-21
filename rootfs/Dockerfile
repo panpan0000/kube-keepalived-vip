@@ -36,6 +36,7 @@ RUN clean-install \
   bash \
   jq \
   dumb-init
+RUN clean-install util-linux # for flock binary
 
 ADD keepalived.tar.gz /
 
