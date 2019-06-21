@@ -16,7 +16,10 @@ global_defs {
       state BACKUP
       virtual_router_id {{ .vrid_ingress }}
       priority {{ .priority_ingress }}
+      # so that it will respect the priority even boot up order diffs, but may cause jitter
       preempt
+      # at least relief the jitter a little bit
+      preempt_delay 1
       advert_int 1
 
       track_interface {
