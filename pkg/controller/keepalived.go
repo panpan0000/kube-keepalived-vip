@@ -213,7 +213,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     cmds := []string { removeOldRulesCmd }
     iptbl := " iptables-legacy "
     //Compare currentL7Vips and old record, to determine whether to update iptables
-    for _,ip :=range k.l7eps {
+    for _,ip :=range currentL7Vips {
         // insert new rules to the top
         insertCmd :=  iptbl + " -t nat -I " + k.dnatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.dnatExceptionKey + "\""
         cmds = append( cmds, insertCmd )
