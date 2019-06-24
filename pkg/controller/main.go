@@ -155,6 +155,7 @@ type ipvsControllerController struct {
 	configGlobalMapName string
 
 	httpPort int
+    metricsPort int
 
 	ruMD5 string
 
@@ -170,6 +171,9 @@ type ipvsControllerController struct {
 	stopCh chan struct{}
 
     willAddDNAT bool
+
+    muxMetrics *http.ServeMux
+    muxHealth *http.ServeMux
 }
 
 // getEndpoints returns a list of <endpoint ip>:<port> for a given service/target port combination.
@@ -487,8 +491,17 @@ func (ipvsc *ipvsControllerController) Start() {
 	}
 
 	go func() {
-		glog.Infof("Starting HTTP server on port %d", ipvsc.httpPort)
-		err := http.ListenAndServe(fmt.Sprintf(":%d", ipvsc.httpPort), nil)
+		glog.Infof("Starting Metrics server on port %d", ipvsc.metricsPort)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", ipvsc.metricsPort), ipvsc.muxMetrics )
+		if err != nil {
+			glog.Error(err.Error())
+		}
+	}()
+
+
+	go func() {
+		glog.Infof("Starting Health HTTP server on port %d", ipvsc.httpPort)
+		err := http.ListenAndServe(fmt.Sprintf(":%d", ipvsc.httpPort), ipvsc.muxHealth)
 		if err != nil {
 			glog.Error(err.Error())
 		}
@@ -545,16 +558,20 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, metricsPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
 		configSvcMapName:     configSvcMapName,
         configGlobalMapName : configGlobalMapName,
 		httpPort:          httpPort,
+        metricsPort:       metricsPort,
 		stopCh:            make(chan struct{}),
         willAddDNAT:       willAddDNAT,
 	}
+
+    ipvsc.muxMetrics = http.NewServeMux()
+    ipvsc.muxHealth  = http.NewServeMux()
 
 	podInfo, err := k8s.GetPodDetails(kubeClient)
 	if err != nil {
@@ -670,7 +687,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 			fields.OneTermEqualSelector(api.ObjectNameField, cmn_gb)),
 		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
 
-	http.HandleFunc("/health", func(rw http.ResponseWriter, req *http.Request) {
+	ipvsc.muxHealth.HandleFunc("/health", func(rw http.ResponseWriter, req *http.Request) {
 		err := ipvsc.keepalived.Healthy()
 		if err != nil {
 			glog.Errorf("Health check unsuccessful: %v", err)
@@ -681,7 +698,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		fmt.Fprint(rw, "OK")
 	})
 
-	http.HandleFunc("/metrics", func(rw http.ResponseWriter, req *http.Request) {
+	ipvsc.muxMetrics.HandleFunc("/metrics", func(rw http.ResponseWriter, req *http.Request) {
 		metrics, err := ipvsc.keepalived.Metrics()
 		if err != nil {
 			glog.Errorf("Metrics API unsuccessful: %v", err)

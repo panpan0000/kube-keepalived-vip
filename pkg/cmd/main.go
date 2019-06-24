@@ -84,8 +84,9 @@ var (
 	iface = flags.String("iface", "", `network interface to listen on. If undefined, the nodes
                  default interface will be used instead`)
 
-	httpPort = flags.Int("http-port", 8080, `The HTTP port to use for health checks`)
 
+    httpPort = flags.Int("http-port", 8081, `The HTTP port to use for health checks`)
+    metricsPort = flags.Int("metrics-port", 8082, `The HTTP port to use for metrics checks`)
 	releaseVips = flags.Bool("release-vips", true, `add --release-vips to keepalived args`)
 
     willAddDNAT = flags.Bool("add-iptables-dnat", false, `add iptables DNAT rules on the host`)
@@ -111,6 +112,10 @@ func main() {
 
 	if *httpPort < 0 || *httpPort > 65535 {
 		glog.Fatalf("Invalid HTTP port %d, only values between 0 and 65535 are allowed.", httpPort)
+	}
+
+	if *metricsPort< 0 || *metricsPort > 65535 {
+		glog.Fatalf("Invalid Metrics port %d, only values between 0 and 65535 are allowed.", metricsPort)
 	}
 
 	if *vrid < 0 || *vrid > 255 {
@@ -144,7 +149,7 @@ func main() {
 	}
 
 	glog.Info("starting LVS configuration")
-	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips, *willAddDNAT)
+	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *metricsPort, *releaseVips, *willAddDNAT)
 
 	// If kube-proxy running in ipvs mode
 	// Reset of IPVS lead to connection loss with API server

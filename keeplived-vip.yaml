@@ -137,6 +137,7 @@ spec:
             - --global-configmap=kube-system/vip-global-setup-10.6.111.101
             -  --iface=ens192
             -  --http-port=8081
+            -  --metrics-port=8082
             -  --add-iptables-dnat=true
             # unicast uses the ip of the nodes instead of multicast
             # this is useful if running in cloud providers (like AWS)
