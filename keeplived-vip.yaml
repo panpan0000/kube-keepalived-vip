@@ -83,6 +83,8 @@ spec:
       name: kube-keepalived-vip
   template:
     metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         name: kube-keepalived-vip
         io.daocloud.dce.loadbalancer.role: keepalived
@@ -116,7 +118,7 @@ spec:
               name: dev
             - mountPath: /var/log
               name: log-dir
-            - mountPath: /etc/timezone
+            - mountPath: /etc/localtime
               name: tz
           # use downward API
           env:
@@ -139,6 +141,9 @@ spec:
             # unicast uses the ip of the nodes instead of multicast
             # this is useful if running in cloud providers (like AWS)
             #- --use-unicast=true
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
       volumes:
         - name: modules
           hostPath:
@@ -151,7 +156,7 @@ spec:
             path: /var/log
         - name: tz
           hostPath:
-            path: /etc/timezone
+            path: /etc/localtime
       #nodeSelector:
       #  type: worker
       affinity:
