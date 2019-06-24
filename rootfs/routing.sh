@@ -37,7 +37,7 @@ usage(){
 
 
 ############ main ################
-if [ $# -ne 5 ]; then
+if [ "$Operation" != "unset" ] && [ $# -ne 5 ]; then
     usage
 	exit 1
 fi

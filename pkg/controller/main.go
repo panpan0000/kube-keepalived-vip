@@ -529,6 +529,15 @@ func (ipvsc *ipvsControllerController) Stop() error {
         ipvsc.keepalived.CleanupIptablesDNAT(false)
 		ipvsc.keepalived.Stop()
 
+        // DCE: clean Strategic Routing when exists
+        cleanRoutingWhenAsBackup := " iptables-legacy -t mangle -nxvL OUTPUT |grep \"ingress routing rule\" && /routing.sh unset || exit 0"
+        errCleanRouting, _ , errMsg := execShellCommand( cleanRoutingWhenAsBackup  )
+        if errCleanRouting != nil{
+            return fmt.Errorf("Warning: Unable to clean Routing table setup for backup node, please clean up manually. err=%v, err_msg=%v", errCleanRouting, errMsg)
+        }else{
+            glog.Info("successfully clean routing tables")
+        }
+
 		return nil
 	}
 
