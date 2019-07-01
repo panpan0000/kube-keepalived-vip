@@ -713,6 +713,18 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
         }
 	})
 
+	ipvsc.muxMetrics.HandleFunc("/metrics/prometheus", func(rw http.ResponseWriter, req *http.Request) {
+		metrics, err := ipvsc.keepalived.Metrics()
+		if err != nil {
+			glog.Errorf("Metrics API unsuccessful: %v", err)
+			http.Error(rw, fmt.Sprintf("Metrics API error: %v", err), 500)
+			return
+		}
+        outProm := ipvsc.keepalived.Metrics2Prom( metrics )
+        fmt.Fprint(rw, string(outProm) )
+	})
+
+
 
 	return &ipvsc
 }

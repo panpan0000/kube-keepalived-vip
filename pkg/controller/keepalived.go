@@ -410,6 +410,49 @@ func (k *keepalived) decodeMetricsLine( input []string )( ip string, port int32,
 
 }
 
+/////////////////////////////////////////////////////////////
+func (k *keepalived) Metrics2Prom( metricsList []vipMetrics) (output string) {
+    prefix := "l4_"
+    for _,l4 := range metricsList {
+        label := " {" + "vip=\""   + l4.Vip  +  "\","
+        label += "port=\""  + strconv.Itoa(int(l4.Port)) +  "\","
+        label += "protocol=\""  + l4.Protocol +  "\""
+        label += "} "
+        metrics_prefix := prefix + "vip_"
+        output += metrics_prefix + "conns"    + label + strconv.Itoa( l4.Conns )    + "\n"
+        output += metrics_prefix + "in_pkts"   + label + strconv.Itoa( l4.InPkts )   + "\n"
+        output += metrics_prefix + "out_pkts"  + label + strconv.Itoa( l4.OutPkts )  + "\n"
+        output += metrics_prefix + "in_bytes"  + label + strconv.Itoa( l4.InBytes )  + "\n"
+        output += metrics_prefix + "out_bytes" + label + strconv.Itoa( l4.OutBytes ) + "\n"
+        output += metrics_prefix + "cps"      + label + strconv.Itoa( l4.CPS )      + "\n"
+        output += metrics_prefix + "in_pps"    + label + strconv.Itoa( l4.InPPS )    + "\n"
+        output += metrics_prefix + "out_pps"   + label + strconv.Itoa( l4.OutPPS )   + "\n"
+        output += metrics_prefix + "in_bps"    + label + strconv.Itoa( l4.InBPS )    + "\n"
+        output += metrics_prefix + "out_bps"   + label + strconv.Itoa( l4.OutBPS )   + "\n"
+    }
+    for _,l4 := range metricsList {
+        for _,ep := range l4.Eps{
+            label := " {" + "ep_ip=\"" + ep.EpIp + "\","
+            label +=        "ep_port=\"" + strconv.Itoa( int(ep.EpPort)) + "\""
+            label += "} "
+            metrics_prefix := prefix + "endpoint_"
+            output += metrics_prefix + "conns"    + label + strconv.Itoa( ep.Conns )  + "\n"
+            output += metrics_prefix + "in_pkts"   + label + strconv.Itoa( ep.InPkts ) + "\n"
+            output += metrics_prefix + "out_pkts"  + label + strconv.Itoa( ep.OutPkts ) + "\n"
+            output += metrics_prefix + "in_bytes"  + label + strconv.Itoa( ep.InBytes )+ "\n"
+            output += metrics_prefix + "out_bytes" + label + strconv.Itoa( ep.OutBytes )+ "\n"
+            output += metrics_prefix + "cps"      + label + strconv.Itoa( ep.CPS )    + "\n"
+            output += metrics_prefix + "in_pps"    + label + strconv.Itoa( ep.InPPS )  + "\n"
+            output += metrics_prefix + "out_pps"   + label + strconv.Itoa( ep.OutPPS ) + "\n"
+            output += metrics_prefix + "in_bps"    + label + strconv.Itoa( ep.InBPS )  + "\n"
+            output += metrics_prefix + "out_bps"   + label + strconv.Itoa( ep.OutBPS ) + "\n"
+       }
+    }
+    return output
+}
+
+
+
 ////////////////////////////////////////////////////////////
 func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	var out bytes.Buffer
