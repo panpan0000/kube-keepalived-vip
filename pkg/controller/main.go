@@ -126,7 +126,11 @@ func (c vipByNameIPPort) Less(i, j int) bool {
 	if iIP != jIP {
 		return iIP < jIP
 	}
-
+    iextPort := c[i].ExternalPort
+    jextPort := c[j].ExternalPort
+    if iextPort != jextPort {
+        return iextPort < jextPort
+    }
 	iPort := c[i].ContainerPort
 	jPort := c[j].ContainerPort
 	return iPort < jPort
@@ -447,6 +451,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 
 	md5, err := checksum(keepalivedCfg)
 	if err == nil && md5 == ipvsc.ruMD5 {
+        glog.V(2).Infof("no change on configfile %v, will NOT do reload", keepalivedCfg)
 		return nil
 	}
 
@@ -648,7 +653,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		},
 		UpdateFunc: func(old, cur interface{}) {
             if old.(*apiv1.Endpoints).Namespace == "kube-system" &&
-            (   old.(*apiv1.Endpoints).Name == "kube-controller-manaer" ||
+            (   old.(*apiv1.Endpoints).Name == "kube-controller-manager" ||
                 old.(*apiv1.Endpoints).Name == "kube-scheduler" ) {
                 // skip when ep changed in kube-system. due to kube-controller-manaer/kube-scheduler gets updated every second
                 return
