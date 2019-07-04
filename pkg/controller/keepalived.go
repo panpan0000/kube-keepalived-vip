@@ -134,6 +134,14 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 	conf["proxyMode"] = k.proxyMode
 	conf["vipIsEmpty"] = len(k.vips) == 0
 	conf["notify"] = k.notify
+    conf["delay_loop"] = 5
+
+    if len(svcs) > 100 {
+        conf["delay_loop"] = 10
+    }
+    if len(svcs) > 1000 {
+        conf["delay_loop"] = 30
+    }
 
 	conf["l7vipIsEmpty"] = len(settings.L7VIP) == 0
 	conf["vrid_ingress"] = k.vrid + 1

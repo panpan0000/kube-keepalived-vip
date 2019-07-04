@@ -1,5 +1,6 @@
 {{ $iface := .iface }}{{ $netmask := .netmask }}
 {{ $L7VIP := .L7VIP }}
+{{ $delayLoop := .delay_loop }}
 global_defs {
   vrrp_version 3
   vrrp_iptables {{ .iptablesChain }}
@@ -167,7 +168,7 @@ global_defs {
             {{ else }}
             # Service: {{ $svc.Name }}
             virtual_server {{ $svc.IP }} {{ $svc.ExternalPort }} {
-              delay_loop 5
+              delay_loop {{ $delayLoop }}
               lvs_sched {{ $svc.LbMethod }}
               lvs_method {{ $svc.LVSMethod }}
               persistence_timeout {{ $svc.PersistenceTimeout  }}
