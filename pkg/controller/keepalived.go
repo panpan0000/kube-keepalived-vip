@@ -218,7 +218,12 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
 
 
     removeOldRulesCmd := "iptables-legacy-save | grep -v " +  k.dnatExceptionKey + " | iptables-legacy-restore " // remove old rules matched the comments "$k.dnatExceptionKey"
-    cmds := []string { removeOldRulesCmd }
+
+    errRev, _, errMsgRev := execShellCommand( removeOldRulesCmd )
+    if errRev != nil {
+        glog.Info( "[Warning] removing old L7 exception iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
+    }
+    cmds := []string { }
     iptbl := " iptables-legacy "
     //Compare currentL7Vips and old record, to determine whether to update iptables
     for _,ip :=range currentL7Vips {
