@@ -241,7 +241,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
         return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7eps, copied elements = %d\n", n)
     }
 
-    
+
     glog.Info("Info: Update new rules into iptables for new L7 VIPS : Done")
     return nil
 }
@@ -398,7 +398,7 @@ func (k *keepalived) stringToInt( input []string )( []int, error){
 //////////////////////////////////////////////////
 func (k *keepalived) decodeMetricsLine( input []string )( ip string, port int32, values []int,  err error){
 	if len(input) != 11 {
-	    return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: input array length invalid = %d", input)
+	    return "",0, []int{}, fmt.Errorf("ipvsadm parsing error: input array length invalid = %v, length=%v", input, len(input))
 	}
 	ipPort := input[0]
 	ipAndPort  := strings.Split( ipPort, ":" )
@@ -419,43 +419,45 @@ func (k *keepalived) decodeMetricsLine( input []string )( ip string, port int32,
 }
 
 /////////////////////////////////////////////////////////////
-func (k *keepalived) Metrics2Prom( metricsList []vipMetrics) (output string) {
+func (k *keepalived) Metrics2Prom( metricsList []vipMetrics) (output *bytes.Buffer ) {
+    output  = bytes.NewBufferString("")
     prefix := "l4_"
+    metrics_prefix := prefix + "vip_"
     for _,l4 := range metricsList {
         label := " {" + "vip=\""   + l4.Vip  +  "\","
         label += "port=\""  + strconv.Itoa(int(l4.Port)) +  "\","
         label += "protocol=\""  + l4.Protocol +  "\""
         label += "} "
-        metrics_prefix := prefix + "vip_"
-        output += metrics_prefix + "conns"    + label + strconv.Itoa( l4.Conns )    + "\n"
-        output += metrics_prefix + "in_pkts"   + label + strconv.Itoa( l4.InPkts )   + "\n"
-        output += metrics_prefix + "out_pkts"  + label + strconv.Itoa( l4.OutPkts )  + "\n"
-        output += metrics_prefix + "in_bytes"  + label + strconv.Itoa( l4.InBytes )  + "\n"
-        output += metrics_prefix + "out_bytes" + label + strconv.Itoa( l4.OutBytes ) + "\n"
-        output += metrics_prefix + "cps"      + label + strconv.Itoa( l4.CPS )      + "\n"
-        output += metrics_prefix + "in_pps"    + label + strconv.Itoa( l4.InPPS )    + "\n"
-        output += metrics_prefix + "out_pps"   + label + strconv.Itoa( l4.OutPPS )   + "\n"
-        output += metrics_prefix + "in_bps"    + label + strconv.Itoa( l4.InBPS )    + "\n"
-        output += metrics_prefix + "out_bps"   + label + strconv.Itoa( l4.OutBPS )   + "\n"
+        output.WriteString( metrics_prefix + "conns"    + label + strconv.Itoa( l4.Conns ) + "\n" )
+        output.WriteString( metrics_prefix + "in_pkts"   + label + strconv.Itoa( l4.InPkts )   + "\n")
+        output.WriteString( metrics_prefix + "out_pkts"  + label + strconv.Itoa( l4.OutPkts )  + "\n")
+        output.WriteString( metrics_prefix + "in_bytes"  + label + strconv.Itoa( l4.InBytes )  + "\n")
+        output.WriteString( metrics_prefix + "out_bytes" + label + strconv.Itoa( l4.OutBytes ) + "\n")
+        output.WriteString( metrics_prefix + "cps"      + label + strconv.Itoa( l4.CPS )      + "\n")
+        output.WriteString( metrics_prefix + "in_pps"    + label + strconv.Itoa( l4.InPPS )    + "\n")
+        output.WriteString( metrics_prefix + "out_pps"   + label + strconv.Itoa( l4.OutPPS )   + "\n")
+        output.WriteString( metrics_prefix + "in_bps"    + label + strconv.Itoa( l4.InBPS )    + "\n")
+        output.WriteString( metrics_prefix + "out_bps"   + label + strconv.Itoa( l4.OutBPS )   + "\n")
     }
+    metrics_prefix = prefix + "endpoint_"
     for _,l4 := range metricsList {
         for _,ep := range l4.Eps{
             label := " {" + "ep_ip=\"" + ep.EpIp + "\","
             label +=        "ep_port=\"" + strconv.Itoa( int(ep.EpPort)) + "\""
             label += "} "
-            metrics_prefix := prefix + "endpoint_"
-            output += metrics_prefix + "conns"    + label + strconv.Itoa( ep.Conns )  + "\n"
-            output += metrics_prefix + "in_pkts"   + label + strconv.Itoa( ep.InPkts ) + "\n"
-            output += metrics_prefix + "out_pkts"  + label + strconv.Itoa( ep.OutPkts ) + "\n"
-            output += metrics_prefix + "in_bytes"  + label + strconv.Itoa( ep.InBytes )+ "\n"
-            output += metrics_prefix + "out_bytes" + label + strconv.Itoa( ep.OutBytes )+ "\n"
-            output += metrics_prefix + "cps"      + label + strconv.Itoa( ep.CPS )    + "\n"
-            output += metrics_prefix + "in_pps"    + label + strconv.Itoa( ep.InPPS )  + "\n"
-            output += metrics_prefix + "out_pps"   + label + strconv.Itoa( ep.OutPPS ) + "\n"
-            output += metrics_prefix + "in_bps"    + label + strconv.Itoa( ep.InBPS )  + "\n"
-            output += metrics_prefix + "out_bps"   + label + strconv.Itoa( ep.OutBPS ) + "\n"
+            output.WriteString( metrics_prefix + "conns"    + label + strconv.Itoa( ep.Conns )  + "\n" )
+            output.WriteString( metrics_prefix + "in_pkts"   + label + strconv.Itoa( ep.InPkts ) + "\n" )
+            output.WriteString( metrics_prefix + "out_pkts"  + label + strconv.Itoa( ep.OutPkts ) + "\n" )
+            output.WriteString( metrics_prefix + "in_bytes"  + label + strconv.Itoa( ep.InBytes )+ "\n" )
+            output.WriteString( metrics_prefix + "out_bytes" + label + strconv.Itoa( ep.OutBytes )+ "\n" )
+            output.WriteString( metrics_prefix + "cps"      + label + strconv.Itoa( ep.CPS )    + "\n" )
+            output.WriteString( metrics_prefix + "in_pps"    + label + strconv.Itoa( ep.InPPS )  + "\n" )
+            output.WriteString( metrics_prefix + "out_pps"   + label + strconv.Itoa( ep.OutPPS ) + "\n" )
+            output.WriteString( metrics_prefix + "in_bps"    + label + strconv.Itoa( ep.InBPS )  + "\n" )
+            output.WriteString( metrics_prefix + "out_bps"   + label + strconv.Itoa( ep.OutBPS ) + "\n" )
        }
     }
+    //NOTE, in go, the "string +" is very very slow due to dynamic allocation of space
     return output
 }
 
@@ -467,7 +469,9 @@ func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	cmdStr :=  "export F1=/tmp/m1 && export F2=/tmp/m2 "
 	cmdStr +=   "&& ipvsadm -Ln  --stats | tail -n +4  > $F1 " // skip first 3 lines of header, and echo to $F1
 	cmdStr +=   "&& ipvsadm -Ln  --rate  | tail -n +4 | awk '{print $3 \"\\t\" $4 \"\\t\" $5 \"\\t\" $6 \"\\t\" $7 }' > $F2" // skip IP/port columes
-	cmdStr +=   "&& paste -d\"\\t\" $F1  $F2 " // concat two file vertically
+	cmdStr +=   "&& l1=$(wc $F1 -l|awk '{print $1}') "
+	cmdStr +=   "&& l2=$(wc $F2 -l|awk '{print $1}') "
+	cmdStr +=   "&& if [ $l1 -eq $l2 ]; then   paste -d\"\\t\" $F1  $F2 ; fi" // concat two file vertically
 	//cmdStr +=   " && rm $F1 $F2" // to speed up, not to remove them..
 	glog.Infof("metrics command : %s\n", cmdStr)
 	cmd := exec.Command("bash", "-c", cmdStr )
@@ -498,7 +502,7 @@ func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	        values := []int{}
 	        metcs.Vip, metcs.Port, values, err = k.decodeMetricsLine( arr[1:] )
 	        if err != nil {
-	            return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+	            return metricsList, fmt.Errorf("ipvsadm parsing vip line error: error from decodeMetricsLine() = %v", err )
 	        }
 	        metcs.Conns   = values[0]
 	        metcs.InPkts  = values[1]
@@ -524,7 +528,7 @@ func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	        values := []int{}
 	        epM.EpIp, epM.EpPort, values, err = k.decodeMetricsLine( arr[1:] )
 	        if err != nil {
-	            return metricsList, fmt.Errorf("ipvsadm parsing error: error from decodeMetricsLine() = %v", err )
+	            return metricsList, fmt.Errorf("ipvsadm parsing ep line error: error from decodeMetricsLine() = %v", err )
 	        }
 	        epM.Conns   = values[0]
 	        epM.InPkts  = values[1]
