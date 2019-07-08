@@ -702,7 +702,20 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		glog.V(3).Info("Health check successful")
 		fmt.Fprint(rw, "OK")
 	})
-
+    ipvsc.muxMetrics.HandleFunc("/info", func(rw http.ResponseWriter, req *http.Request) {
+        vipInfo, err := ipvsc.keepalived.VipInfo()
+        if err != nil {
+            glog.Errorf("VIP Info API unsuccessful: %v", err)
+            http.Error(rw, fmt.Sprintf("VIP Info API error: %v", err), 500)
+            return
+        }
+        jsOut ,jsErr := json.Marshal( vipInfo )
+        if jsErr == nil{
+            fmt.Fprint(rw, string(jsOut) )
+        }else{
+            fmt.Fprint(rw, "json.Marshal error %v\n" ,jsErr)
+        }
+    })
 	ipvsc.muxMetrics.HandleFunc("/metrics", func(rw http.ResponseWriter, req *http.Request) {
 		metrics, err := ipvsc.keepalived.Metrics()
 		if err != nil {
@@ -726,7 +739,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 			return
 		}
         outProm := ipvsc.keepalived.Metrics2Prom( metrics )
-        fmt.Fprint(rw, string(outProm) )
+        fmt.Fprint(rw, outProm.Bytes() )
 	})
 
 

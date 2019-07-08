@@ -63,6 +63,9 @@ type epMetrics struct {
 	InBPS  int
 	OutBPS int
 }
+type vipInfo struct {
+    MasterNodeName string
+}
 type vipMetrics struct {
 	Protocol string
 	Vip     string
@@ -466,7 +469,18 @@ func (k *keepalived) Metrics2Prom( metricsList []vipMetrics) (output *bytes.Buff
     return output
 }
 
-
+////////////////////////////////////////////////////////////
+func (k *keepalived) VipInfo() ( info vipInfo , err error) {
+    var hostName bytes.Buffer
+    hostCmd := exec.Command("hostname")
+    hostCmd.Stdout = &hostName
+    err = hostCmd.Run()
+    if err != nil {
+        return info, err
+    }
+    info.MasterNodeName = strings.Trim( hostName.String(), "\n")
+    return info, err
+}
 
 ////////////////////////////////////////////////////////////
 func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
