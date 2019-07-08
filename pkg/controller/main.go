@@ -500,6 +500,7 @@ func (ipvsc *ipvsControllerController) Start() {
 		err := http.ListenAndServe(fmt.Sprintf(":%d", ipvsc.metricsPort), ipvsc.muxMetrics )
 		if err != nil {
 			glog.Error(err.Error())
+            os.Exit(-3)
 		}
 	}()
 
@@ -509,6 +510,7 @@ func (ipvsc *ipvsControllerController) Start() {
 		err := http.ListenAndServe(fmt.Sprintf(":%d", ipvsc.httpPort), ipvsc.muxHealth)
 		if err != nil {
 			glog.Error(err.Error())
+            os.Exit(-2)
 		}
 	}()
 
