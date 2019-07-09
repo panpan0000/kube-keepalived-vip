@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: dce-keepalived-10.6.111.101
+  name: dce-keepalived-10.6.111.63
   namespace: kube-system
 data:
-  10.6.111.101-40001-ens192: |-
+  10.6.111.63-40001-ens192: |-
     service=default/nginx-nginx
     port=80
     lbAlgo=rr
@@ -14,11 +14,11 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vip-global-setup-10.6.111.101
+  name: vip-global-setup-10.6.111.63
   namespace: kube-system
 data:
-  L4VIP: 10.6.111.101
-  L7VIP: 10.6.111.121
+  L4VIP: 10.6.111.63
+  L7VIP: 10.6.111.64
   iface: ens192
   L7HttpPort: "8080"
   L7HttpsPort: "8443"
@@ -85,9 +85,10 @@ spec:
     metadata:
       annotations:
         scheduler.alpha.kubernetes.io/critical-pod: ""
+        io.daocloud/dce.keepalived.l4.vip: "10.6.111.64"
       labels:
         name: kube-keepalived-vip
-        io.daocloud.dce.loadbalancer.role: keepalived
+        io.daocloud/dce.loadbalancer.role: keepalived
     spec:
       hostNetwork: true
       serviceAccount: kube-keepalived-vip
@@ -106,8 +107,8 @@ spec:
                cpu: 500m
                memory: 500Mi
              requests:
-               cpu: 100m
-               memory: 500Mi
+               cpu: 200m
+               memory: 200Mi
           securityContext:
             privileged: true
           volumeMounts:
@@ -133,12 +134,13 @@ spec:
           # to use unicast
           args:
             - -v=5
-            - --services-configmap=kube-system/dce-keepalived-10.6.111.101
-            - --global-configmap=kube-system/vip-global-setup-10.6.111.101
+            - --services-configmap=kube-system/dce-keepalived-10.6.111.63
+            - --global-configmap=kube-system/vip-global-setup-10.6.111.63
             -  --iface=ens192
             -  --http-port=8081
             -  --metrics-port=8082
             -  --add-iptables-dnat=true
+            -  --vrid=78
             # unicast uses the ip of the nodes instead of multicast
             # this is useful if running in cloud providers (like AWS)
             #- --use-unicast=true
@@ -168,14 +170,14 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
-                      - l4-slave-45
-                      - l4-slave-46
+                      - macvlan-slave1
+                      - macvlan-slave2
 
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
               matchExpressions:
-              - key: io.daocloud.dce.loadbalancer.role
+              - key: io.daocloud/dce.loadbalancer.role
                 operator: In
                 values:
                 - keepalived
