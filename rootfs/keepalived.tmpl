@@ -40,6 +40,7 @@ global_defs {
       # NOTE: <DANGEROUS> here, we assume the real server are all using the same http/https port!!
       notify_backup "/routing.sh BACKUP  {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
       notify_master "/routing.sh MASTER  {{ $L7VIP }} {{ $iface }} {{ $OneEndPoint.HttpPort }} {{ $OneEndPoint.HttpsPort }}"
+      notify /keepalived-check-l7.sh
     }
 # HTTP
     virtual_server {{ $L7VIP }} {{ .L7HttpPort }} {

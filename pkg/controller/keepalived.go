@@ -576,7 +576,10 @@ func (k *keepalived) Healthy() error {
 	if _, err := os.Stat(vrrpPid); os.IsNotExist(err) {
 		return fmt.Errorf("VRRP child process not running")
 	}
-
+    if len( k.vips ) == 0{
+        // no any vip from configmap, so ignore for now
+        return nil
+    }
 	b, err := ioutil.ReadFile(keepalivedState)
 	if err != nil {
 		return err

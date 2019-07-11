@@ -1,5 +1,5 @@
 #!/bin/bash
-
+## 脚本无用。已经在Health()里面实现了类似逻辑
 detectIpvsState(){
     
     L7VIP=$1
@@ -10,8 +10,12 @@ detectIpvsState(){
     fi
 
     _HEALTHY_IPVS_CONFIG_='$L7VIP:$L7VIPHttpPort'
-
-    state=$(cat /var/run/keepalived.state)
+    stateFile="/var/run/keepalived-l7.state"
+    if [ ! -f $stateFile ]; then
+        echo "$stateFile is not exist, maybe there is no state traction now or no L4 items."
+        exit 0
+    fi
+    state=$(cat $stateFile)
     if [ -n "$state" ] && ( [ "$state" == "MASTER" ] || [ "$state" == "BACKUP" ]  ) ; then # not handle FAULT state, leave it to k8s health check
         # now keepalived is ready
             
