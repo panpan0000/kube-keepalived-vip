@@ -719,7 +719,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
         }
     })
 	ipvsc.muxMetrics.HandleFunc("/metrics", func(rw http.ResponseWriter, req *http.Request) {
-		metrics, err := ipvsc.keepalived.Metrics()
+		metrics, err := ipvsc.keepalived.MetricsSummary()
 		if err != nil {
 			glog.Errorf("Metrics API unsuccessful: %v", err)
 			http.Error(rw, fmt.Sprintf("Metrics API error: %v", err), 500)

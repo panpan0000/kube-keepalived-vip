@@ -66,6 +66,25 @@ type epMetrics struct {
 type vipInfo struct {
     MasterNodeName string
 }
+
+type metricsStruct struct{
+    NodeName string
+    VipsSum []vipSummary
+    MetricsData []vipMetrics
+}
+type vipSummary struct {
+    Vip string
+    Conns int
+    InPkts int
+	OutPkts  int
+	InBytes  int
+	OutBytes int
+	CPS    int
+	InPPS  int
+	OutPPS int
+	InBPS  int
+	OutBPS int
+}
 type vipMetrics struct {
 	Protocol string
 	Vip     string
@@ -482,6 +501,57 @@ func (k *keepalived) VipInfo() ( info vipInfo , err error) {
     return info, err
 }
 
+///////////////////////////////////////////////////////////////////
+func (k *keepalived) MetricsSummary() ( summary metricsStruct, err error) {
+    info, err_n := k.VipInfo()
+    if err_n != nil {
+        return summary, err_n
+    }
+    summary.NodeName = info.MasterNodeName
+    metricsData, err_m := k.Metrics()
+    summary.MetricsData = metricsData
+    if err_m != nil {
+        return summary, err_m
+    }
+    vip_sums := []vipSummary{}
+    for _, vip_port := range metricsData {
+        index := -1 // idx of this vip in vip_sums[]
+        for i, vs := range vip_sums{
+            if vs.Vip == vip_port.Vip{
+                index = i
+                break
+            }
+        }
+        if index == -1 {
+            new_vs := vipSummary{}
+            new_vs.Vip = vip_port.Vip
+            new_vs.Conns = vip_port.Conns
+            new_vs.InPkts = vip_port.InPkts
+            new_vs.OutPkts = vip_port.OutPkts
+            new_vs.InBytes = vip_port.InBytes
+            new_vs.OutBytes = vip_port.OutBytes
+            new_vs.CPS = vip_port.CPS
+            new_vs.InPPS = vip_port.InPPS
+            new_vs.OutPPS = vip_port.OutPPS
+            new_vs.InBPS = vip_port.InBPS
+            new_vs.OutBPS = vip_port.OutBPS
+            vip_sums = append(vip_sums, new_vs)
+        }else{
+            vip_sums[index].Conns += vip_port.Conns
+            vip_sums[index].InPkts += vip_port.InPkts
+            vip_sums[index].OutPkts += vip_port.OutPkts
+            vip_sums[index].InBytes += vip_port.InBytes
+            vip_sums[index].OutBytes += vip_port.OutBytes
+            vip_sums[index].CPS += vip_port.CPS
+            vip_sums[index].InPPS += vip_port.InPPS
+            vip_sums[index].OutPPS += vip_port.OutPPS
+            vip_sums[index].InBPS += vip_port.InBPS
+            vip_sums[index].OutBPS += vip_port.OutBPS
+        }
+    }
+    summary.VipsSum = vip_sums
+    return summary, nil
+}
 ////////////////////////////////////////////////////////////
 func (k *keepalived) Metrics() ( metricsList []vipMetrics, err error) {
 	var out bytes.Buffer
