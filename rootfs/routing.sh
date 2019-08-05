@@ -16,7 +16,6 @@ INGRESS_PORT=" $RShttpPort:$RShttpSPort "
 #INGRESS_PORT=" XXX_RS_HTTP_PORT_XXX:XXX_RS_HTTPS_PORT_XXX "
 #------
 
-LOG_FILE="/var/log/keepalived-notify.log"
 
 
 
@@ -26,6 +25,8 @@ vrid=$LB_ID
 MARK=$((2000+$vrid))
 MARK="0x"$(printf "%x" $MARK)
 ROUTING_TABLE_NUM=$vrid
+
+LOG_FILE="/var/log/keepalived-notify_$LB_ID.log"
 
 COMMENT_HTTP="http : ingress routing rule for LB($LB_ID) ipvs NAT mode"
 COMMENT_HTTPS="https : ingress routing rule for LB($LB_ID) ipvs NAT mode"
