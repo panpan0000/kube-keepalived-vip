@@ -692,6 +692,7 @@ func (k *keepalived) Healthy() error {
     _, outMsg, _ := execShellCommand( cmdStr )
     for _, vip := range k.vips {
         containsVip := strings.Contains( outMsg, vip )
+        glog.Infof(" DEBUG, in Health(): ipvsadm contains %s  ? result  %s", vip, containsVip)
         if !containsVip{
             return fmt.Errorf("Error: Missing L4 VIP rule for vip:%s on ipvsadm rules list %s", vip, outMsg )
         }
