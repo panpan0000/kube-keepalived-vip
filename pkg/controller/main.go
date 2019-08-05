@@ -608,7 +608,8 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 	execer := utilexec.New()
 	dbus := utildbus.New()
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
-
+    dnatChainName := fmt.Sprintf("DCE_L4_DNAT_CHAIN_%d",vrid)
+    dnatExceptionKeyName := fmt.Sprintf("DCE_L7_EXCEPTION_RULES_%d",vrid)
 	ipvsc.keepalived = &keepalived{
 		iface:       iface,
 		ip:          nodeInfo.ip,
@@ -622,8 +623,8 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		proxyMode:   proxyMode,
 		notify:     notify,
 		releaseVips: releaseVips,
-        dnatChain : "DCE_L4_DNAT_CHAIN",
-        dnatExceptionKey: "DCE_L7_EXCEPTION_RULES",
+        dnatChain : dnatChainName,
+        dnatExceptionKey: dnatExceptionKeyName,
 	}
 
 	ipvsc.syncQueue = task.NewTaskQueue(ipvsc.sync)

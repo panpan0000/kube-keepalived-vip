@@ -90,6 +90,7 @@ var (
 	releaseVips = flags.Bool("release-vips", true, `add --release-vips to keepalived args`)
 
     willAddDNAT = flags.Bool("add-iptables-dnat", false, `add iptables DNAT rules on the host`)
+    clearIpvsFirst = flags.Bool("clear-previous-ipvs", true, `when starts, whether to clear previous existing ipvs rules(e.g. kube-proxy running on ipvs mode)`)
 )
 
 func main() {
@@ -150,14 +151,15 @@ func main() {
 
 	glog.Info("starting LVS configuration")
 	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *metricsPort, *releaseVips, *willAddDNAT)
-
-	// If kube-proxy running in ipvs mode
-	// Reset of IPVS lead to connection loss with API server
-	// If connection established goclient will retry itself
-	err = resetIPVS()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
-	}
+    if *clearIpvsFirst {
+        // If kube-proxy running in ipvs mode
+        // Reset of IPVS lead to connection loss with API server
+        // If connection established goclient will retry itself
+        err = resetIPVS()
+        if err != nil {
+            glog.Fatalf("unexpected error: %v", err)
+        }
+    }
 
 	ipvsc.Start()
 }

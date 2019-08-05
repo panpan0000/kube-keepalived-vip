@@ -3,12 +3,13 @@
 #------
 #author: Lan Weizhou
 #-------
-
 Operation=$1
-VIP=$2
-LOCAL_IF=$3      # NIC interface  like ens192
-RShttpPort=$4    # real server http port
-RShttpSPort=$5
+LB_ID=$2
+VIP=$3
+LOCAL_IF=$4     # NIC interface  like ens192
+RShttpPort=$5    # real server http port
+RShttpSPort=$6
+
 
 INGRESS_PORT=" $RShttpPort:$RShttpSPort "
 
@@ -17,11 +18,17 @@ INGRESS_PORT=" $RShttpPort:$RShttpSPort "
 
 LOG_FILE="/var/log/keepalived-notify.log"
 
-MARK="0xd05"
-ROUTING_TABLE_NUM=100
 
-COMMENT_HTTP="http : ingress routing rule for ipvs NAT mode"
-COMMENT_HTTPS="https : ingress routing rule for ipvs NAT mode"
+
+#MARK="0xd05"
+#ROUTING_TABLE_NUM=100
+vrid=$LB_ID
+MARK=$((2000+$vrid))
+MARK="0x"$(printf "%x" $MARK)
+ROUTING_TABLE_NUM=$vrid
+
+COMMENT_HTTP="http : ingress routing rule for LB($LB_ID) ipvs NAT mode"
+COMMENT_HTTPS="https : ingress routing rule for LB($LB_ID) ipvs NAT mode"
 
 iptables="iptables-legacy"
 
@@ -32,16 +39,20 @@ _STATUS_FLAG_FILE='/etc/keepalived/_keepalived_status_'
 
 
 usage(){
-    echo "$_SCRIPT_FILENAME_ $$:  <backup|master/unset/set> <L7_VIP> <NIC_Interface> <L7_RS_Http_Port> <L7_RS_Https_Port>" 
+    echo "$_SCRIPT_FILENAME_ $$:  <backup|master/set> <LB_ID(1-255)> <L7_VIP> <NIC_Interface> <L7_RS_Http_Port> <L7_RS_Https_Port>" 
+    echo "$_SCRIPT_FILENAME_ $$:  <unset> <LB_ID(1-255)>" 
 }
 
 
 ############ main ################
-if [ "$Operation" != "unset" ] && [ $# -ne 5 ]; then
+if [ "$Operation" != "unset" ] && [ $# -ne 6 ]; then
     usage
 	exit 1
 fi
-
+if [ "$Operation" == "unset" ] && [ $# -ne 2 ]; then
+   usage
+   exit 1
+fi
 
 clog(){
 	echo "`date` $_SCRIPT_FILENAME_ $$: $Operation $@" | tee -a ${LOG_FILE}
