@@ -720,12 +720,12 @@ func (k *keepalived) Cleanup() {
     k.CleanupIptablesSNAT(false)
 
     // DCE: clean Strategic Routing when exists
-    cleanRoutingWhenAsBackup := " iptables-legacy -t mangle -nxvL OUTPUT |grep \"ingress routing rule\" && /routing.sh unset || exit 0"
+    cleanRoutingWhenAsBackup := fmt.Sprintf("/routing.sh unset %v", k.vrid)
     errCleanRouting, _ , errMsg := execShellCommand( cleanRoutingWhenAsBackup  )
     if errCleanRouting != nil{
         glog.Errorf("Warning: Unable to clean Routing table setup for backup node, please clean up manually. err=%v, err_msg=%v", errCleanRouting, errMsg)
     }else{
-        glog.Info("successfully clean routing tables")
+        glog.Infof("successfully clean routing tables, command  %v", cleanRoutingWhenAsBackup)
     }
 
 
