@@ -95,6 +95,10 @@ spec:
       containers:
         - image: daocloud.io/daocloud/kube-keepalived-vip:0.34-dce
           name: kube-keepalived-vip
+          lifecycle:
+              preStop:
+                  exec:
+                      command: ["/bin/sh","-c","sleep 10"]
           imagePullPolicy: Always
           livenessProbe:
             httpGet:
