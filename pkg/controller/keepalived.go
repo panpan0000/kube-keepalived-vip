@@ -749,7 +749,8 @@ func (k *keepalived) removeVIP(vip string) {
 	glog.Infof("removing configured VIP %v", vip)
 	out, err := k8sexec.New().Command("ip", "addr", "del", vip+"/32", "dev", k.iface).CombinedOutput()
 	if err != nil {
-		glog.V(2).Infof("Error removing VIP %s: %v\n%s", vip, err, out)
+        //maybe this is the backup node, doesn't own the vip
+		glog.V(2).Infof("Error removing VIP %s: on dev %s %v\n%s", vip, k.iface, err, out)
 	}
 }
 
