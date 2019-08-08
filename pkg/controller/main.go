@@ -513,12 +513,9 @@ func (ipvsc *ipvsControllerController) Start() {
             os.Exit(-2)
 		}
 	}()
-
-    glog.Info("starting Setup DNAT iptables rules")
-    ipvsc.keepalived.CleanupIptablesDNAT(true) // cleanup first, to avoid dirty enviroment . Ignore failure
-    ipvsc.keepalived.SetupIptablesDNAT()
 	glog.Info("starting keepalived to announce VIPs")
 	ipvsc.keepalived.Start()
+
 }
 
 func handleSigterm(ipvsc *ipvsControllerController) {
@@ -546,18 +543,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 		glog.Infof("shutting down controller queues")
 		close(ipvsc.stopCh)
 		go ipvsc.syncQueue.Shutdown()
-        ipvsc.keepalived.CleanupIptablesDNAT(false)
 		ipvsc.keepalived.Stop()
-
-        // DCE: clean Strategic Routing when exists
-        cleanRoutingWhenAsBackup := " iptables-legacy -t mangle -nxvL OUTPUT |grep \"ingress routing rule\" && /routing.sh unset || exit 0"
-        errCleanRouting, _ , errMsg := execShellCommand( cleanRoutingWhenAsBackup  )
-        if errCleanRouting != nil{
-            return fmt.Errorf("Warning: Unable to clean Routing table setup for backup node, please clean up manually. err=%v, err_msg=%v", errCleanRouting, errMsg)
-        }else{
-            glog.Info("successfully clean routing tables")
-        }
-
 		return nil
 	}
 

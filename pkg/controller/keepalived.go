@@ -276,19 +276,19 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
 
 
 //====================================================
-// since LVS NAT mode doesn't do the DNAT by default, so here we set it up on host
+// since LVS NAT mode doesn't do the SNAT by default, so here we set it up on host
 //====================================================
-func (k *keepalived) SetupIptablesDNAT() {
+func (k *keepalived) SetupIptablesSNAT() {
     glog.Infof("set up dnat iptables...     ")
 	// Q&A:
 	// Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
 	// A: Here we setup Legacy iptables rules instead of nf_table iptable
 	iptbl := " iptables-legacy "
 	targetCidr := "0.0.0.0/0"
-    errPrefix := "Error setup iptables DNAT rules"
+    errPrefix := "Error setup iptables SNAT rules"
     cmdList := []string{
         iptbl + "-t nat -N " + k.dnatChain, // 1.create a new customized chain
-        iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" ,// 2. add a rule , DNAT all
+        iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" ,// 2. add a rule , SNAT all
         iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain, // 3. add this custmized chain to the top of POSTROUTING chain
     }
     for _,cmdStr := range cmdList {
@@ -301,10 +301,10 @@ func (k *keepalived) SetupIptablesDNAT() {
 //====================================================
 // delete the customized iptables chain which keepalived-vip container set up  on host 
 //====================================================
-func (k *keepalived) CleanupIptablesDNAT(igore_error bool) {
+func (k *keepalived) CleanupIptablesSNAT(igore_error bool) {
 	iptbl := " iptables-legacy "
 	glog.Infof("cleanup dnat iptables...        (igore_error=%v)",igore_error)
-    errPrefix := "problem encountered when cleanup iptables DNAT rules"
+    errPrefix := "problem encountered when cleanup iptables SNAT rules"
 
     cmdList := []string{
         iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain, // remove chain from POSTROUTING
@@ -351,6 +351,12 @@ func (k *keepalived) Start() {
 	}
 
 	k.started = true
+
+    glog.Info("starting Setup SNAT iptables rules")
+    k.CleanupIptablesSNAT(true) // cleanup first, to avoid dirty enviroment . Ignore failure
+    k.SetupIptablesSNAT()
+
+	glog.Info("starting keepalived process...")
 
 	if err := k.cmd.Run(); err != nil {
 		glog.Fatalf("Error starting keepalived: %v", err)
@@ -710,6 +716,18 @@ func (k *keepalived) Cleanup() {
 	for _, vip := range k.vips {
 		k.removeVIP(vip)
 	}
+
+    k.CleanupIptablesSNAT(false)
+
+    // DCE: clean Strategic Routing when exists
+    cleanRoutingWhenAsBackup := " iptables-legacy -t mangle -nxvL OUTPUT |grep \"ingress routing rule\" && /routing.sh unset || exit 0"
+    errCleanRouting, _ , errMsg := execShellCommand( cleanRoutingWhenAsBackup  )
+    if errCleanRouting != nil{
+        glog.Errorf("Warning: Unable to clean Routing table setup for backup node, please clean up manually. err=%v, err_msg=%v", errCleanRouting, errMsg)
+    }else{
+        glog.Info("successfully clean routing tables")
+    }
+
 
 	err := k.ipt.FlushChain(iptables.TableFilter, iptables.Chain(iptablesChain))
 	if err != nil {
