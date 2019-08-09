@@ -45,6 +45,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	api "k8s.io/kubernetes/pkg/apis/core"
 
+    k8sexec "k8s.io/utils/exec"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
 	utilexec "k8s.io/utils/exec"
@@ -471,11 +472,36 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
         glog.Errorf("Error when UpdateL7ExceptionRules: %v", errL7Rule)
     }
 
+    //DCE Customized: Update the L4 Ignore kube-proxy Rules in iptables
+    l4Vips := []string{}
+    for _, svc := range svcs{
+        l4Vips = append(l4Vips,svc.IP)
+    }
+    errL4Rule := ipvsc.keepalived.UpdateL4IgnoreRules( l4Vips )
+    if errL4Rule != nil{
+        glog.Errorf("Error when UpdateL4ExceptionRules: %v", errL4Rule)
+    }
+
+
+
+
 	return nil
 }
 
 // Stop stops the loadbalancer controller.
 func (ipvsc *ipvsControllerController) Start() {
+
+    //DCE Customized, Not Support Kube-proxy with IPVS
+    out, err := k8sexec.New().Command("bash", "-c", "ps -lef|grep kube-proxy|grep \"proxy-mode=ipvs\"").CombinedOutput()
+    if err != nil{
+        glog.Errorf("Error, keepalived-vip does NOT support running with kube-proxy running in IPVS mode, force Exist !!")
+        glog.Errorf("detected kube-proxy in ipvs mode : out=%s, err=%s", out, err)
+        // Because current tricky lots of iptables command used, e.x. : skip-kube-proxy rule... if kube-proxy runs in ipvs, this ignore-rule will not work.
+        // FIXME
+        os.Exit(-4)
+    }else{
+        glog.Info("kube-proxy running in iptables mode, safe to go...")
+    }
 	go ipvsc.epController.Run(ipvsc.stopCh)
 	go ipvsc.svcController.Run(ipvsc.stopCh)
 	go ipvsc.map1Controller.Run(ipvsc.stopCh)
@@ -596,6 +622,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
     dnatChainName := fmt.Sprintf("DCE_L4_DNAT_CHAIN_%d",vrid)
     dnatExceptionKeyName := fmt.Sprintf("DCE_L7_EXCEPTION_RULES_%d",vrid)
+    IgnoreKubeProxyKeyName := fmt.Sprintf("DCE_L4_IGNORE_KUBE_PROXY_FOR_VIP_RULES_%d",vrid)
 	ipvsc.keepalived = &keepalived{
 		iface:       iface,
 		ip:          nodeInfo.ip,
@@ -611,7 +638,8 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		releaseVips: releaseVips,
         dnatChain : dnatChainName,
         dnatExceptionKey: dnatExceptionKeyName,
-	}
+        IgnoreKubeProxyKey: IgnoreKubeProxyKeyName,
+    }
 
 	ipvsc.syncQueue = task.NewTaskQueue(ipvsc.sync)
 

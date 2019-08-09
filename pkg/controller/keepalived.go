@@ -125,6 +125,8 @@ type keepalived struct {
 	dnatChain      string
     dnatExceptionKey string
     l7eps         []string
+    IgnoreKubeProxyKey string
+    previousL4Vips []string
 }
 
 // WriteCfg creates a new keepalived configuration file.
@@ -209,16 +211,89 @@ func getVIPs(svcs []vip) []string {
 }
 
 //----------------------------------------------------
+// Update the L4 exception rules in iptables PREROUTING chain, to ignore kube-proxy rules to treat VIP as external-ip
+// FIXME, the code is almost exactlly the same as Update L7 Rules
+//---------------------------------------------------
+func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
+
+    //Exactly Get the IP newly added and removed
+    newlyAddIP := []string{}
+    removedIP  := []string{}
+    currentMap := make(map[string]bool)
+    oldMap := make(map[string]bool)
+    combineMap := make(map[string]bool)
+    for _, newIP := range currentL4Vips{
+        combineMap[newIP] = true
+        currentMap[newIP] = true
+    }
+    for _, oldIP := range k.previousL4Vips{
+        combineMap[oldIP] = true
+        oldMap[oldIP] = true
+    }
+    // Those disappeared in currentMap
+    for ip := range combineMap{
+        if _, ok := currentMap[ip]; !ok {
+            removedIP = append(removedIP, ip)
+        }
+    }
+    // Those newly appear, comparing oldMap
+    for ip := range combineMap{
+        if _, ok := oldMap[ip]; !ok {
+            newlyAddIP = append(newlyAddIP, ip)
+        }
+    }
+
+    if len(newlyAddIP) == 0 && len(removedIP) == 0{
+        // no change
+        return nil
+    }
+    // Copy new array to old
+    k.previousL4Vips= make( []string,len(currentL4Vips) )
+    n := copy( k.previousL4Vips,  currentL4Vips )
+    if n != len(currentL4Vips) {
+        return fmt.Errorf("Error: Failed to copy currentL4Vips slices to k.previousL4Vips, copied elements = %d\n", n)
+    }
+
+
+    iptbl := " iptables-legacy "
+    glog.Infof("Info: Detected changes in currentL4Vips:  old =%v, new =%v\n", k.previousL4Vips, currentL4Vips)
+
+    for _,ip :=range removedIP {
+        removeOldRulesCmd := iptbl + " -t nat -D PREROUTING -d " + ip + " -j RETURN  -m comment --comment \"" + k.IgnoreKubeProxyKey + "\""
+        // remove old rules matched the comments "$k.dnatExceptionKey"
+        errRev, _, errMsgRev := execShellCommand(removeOldRulesCmd)
+        if errRev != nil {
+            glog.Info( "[Warning] removing old L4 ignore kube-proxy iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
+        }
+    }
+    for _,ip :=range newlyAddIP {
+        // insert new rules to the top
+        insertCmd :=  iptbl + " -t nat -I PREROUTING -d " + ip + " -j RETURN  -m comment --comment \"" + k.IgnoreKubeProxyKey + "\""
+        err, outMsg, errMsg := execShellCommand(insertCmd)
+        if err != nil {
+            glog.Errorf( "Insert L4 ignore kube-proxy exception rules Failure: (%v): %v , stdout=%v, stderr=%v\n", insertCmd, err, outMsg, errMsg )
+            return err
+        }
+    }
+
+    glog.Info("Info: Update new ignore-kube-proxy rules into iptables for new L4 VIPS : Done")
+    return nil
+
+
+}
+
+
+//----------------------------------------------------
 // Update the L7 exception rules in iptables customized chain
 //---------------------------------------------------
-func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
+func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
 
 
     //FIXME, should check if rules missing. len(existing rule) == len(l7Vips)
 
-    if ( len(currentL7Vips) == len( k.l7eps) ){
+    if ( len(currentL7Eps) == len( k.l7eps) ){
         changesDetected := false
-        for _, newIP := range currentL7Vips{
+        for _, newIP := range currentL7Eps{
             thisIPChanged := true
             for _, oldIP := range k.l7eps {
                 if oldIP == newIP{
@@ -235,7 +310,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
             return nil
         }
     }
-    glog.Infof("Info: Detected changes in currentL7Vips:  old =%v, new =%v\n", k.l7eps, currentL7Vips)
+    glog.Infof("Info: Detected changes in currentL7Eps:  old =%v, new =%v\n", k.l7eps, currentL7Eps)
 
 
 
@@ -247,8 +322,8 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     }
     cmds := []string { }
     iptbl := " iptables-legacy "
-    //Compare currentL7Vips and old record, to determine whether to update iptables
-    for _,ip :=range currentL7Vips {
+    //Compare currentL7Eps and old record, to determine whether to update iptables
+    for _,ip :=range currentL7Eps {
         // insert new rules to the top
         insertCmd :=  iptbl + " -t nat -I " + k.dnatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.dnatExceptionKey + "\""
         cmds = append( cmds, insertCmd )
@@ -262,10 +337,10 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Vips []string ) error {
     }
 
     // Copy new array to old
-    k.l7eps= make( []string,len(currentL7Vips) )
-    n := copy( k.l7eps,  currentL7Vips )
-    if n != len(currentL7Vips) {
-        return fmt.Errorf("Error: Failed to copy currentL7Vips slices to k.l7eps, copied elements = %d\n", n)
+    k.l7eps= make( []string,len(currentL7Eps) )
+    n := copy( k.l7eps,  currentL7Eps )
+    if n != len(currentL7Eps) {
+        return fmt.Errorf("Error: Failed to copy currentL7Eps slices to k.l7eps, copied elements = %d\n", n)
     }
 
 
@@ -718,6 +793,23 @@ func (k *keepalived) Cleanup() {
 	}
 
     k.CleanupIptablesSNAT(false)
+
+    // Deleting the Ignore-Kube-Proxy Rules for L4 VIP
+    iptbl := " iptables-legacy "
+    cmds := []string { }
+    for _, vip :=range k.vips{
+        // insert new rules to the top
+        insertCmd :=  iptbl + " -t nat -D PREROUTING -d " + vip + " -j RETURN  -m comment --comment \"" + k.IgnoreKubeProxyKey + "\""
+        cmds = append( cmds, insertCmd )
+    }
+    for _,cmdStr := range cmds {
+        err, outMsg, errMsg := execShellCommand( cmdStr )
+        if err != nil {
+            glog.Errorf( "Deleting L4 ignore kube-proxy exception rules Failure: (%v): %v , stdout=%v, stderr=%v\n", cmdStr, err, outMsg, errMsg )
+        }
+    }
+
+
 
     // DCE: clean Strategic Routing when exists
     cleanRoutingWhenAsBackup := fmt.Sprintf("/routing.sh unset %v", k.vrid)

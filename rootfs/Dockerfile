@@ -35,7 +35,9 @@ RUN clean-install \
   ipvsadm \
   bash \
   jq \
-  dumb-init
+  dumb-init \
+  procps
+
 RUN clean-install util-linux # for flock binary
 
 ADD keepalived.tar.gz /
