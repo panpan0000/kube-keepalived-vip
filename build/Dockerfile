@@ -19,8 +19,8 @@ COPY sources.list /etc/apt/sources.list
 
 COPY build.sh /build.sh
 
-ENV VERSION 2.0.15
-ENV SHA256 8647dbef5475e6fc2738f4ac46b363de6ab7571f33743a493ad5ab5231b7d26a 
+ENV VERSION 2.0.18
+ENV SHA256 b2121760bba368301ed3607caa0a9a2be91bc07d50963a005d04930670428360
 
 RUN clean-install bash
 
