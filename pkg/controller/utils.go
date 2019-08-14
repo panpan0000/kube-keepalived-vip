@@ -267,8 +267,8 @@ func parseL4Config(input string) ( svcConfig, error) {
         lvKind:"NAT",
         persistence_timeout:1800,
     }
-
-    lines := strings.Split(input,"\n")
+    trimed := strings.Trim(input,"\n")
+    lines := strings.Split(trimed,"\n")
     for _, line := range lines{
         kv := strings.Split( line,"=")
         if len(kv) != 2 {
