@@ -258,8 +258,9 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
     iptbl := " iptables-legacy "
     glog.Infof("Info: Detected changes in currentL4Vips:  old =%v, new =%v\n", k.previousL4Vips, currentL4Vips)
 
-    for _,ip :=range removedIP {
-        removeOldRulesCmd := iptbl + " -t nat -D PREROUTING -d " + ip + " -j RETURN  -m comment --comment \"" + k.IgnoreKubeProxyKey + "\""
+    for _,vip :=range removedIP {
+        removeOldRulesCmd := iptbl + " -t nat -nxvL PREROUTING --line | grep \""+ k.IgnoreKubeProxyKey
+        removeOldRulesCmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables -t nat -D PREROUTING"
         // remove old rules matched the comments "$k.dnatExceptionKey"
         errRev, _, errMsgRev := execShellCommand(removeOldRulesCmd)
         if errRev != nil {
@@ -799,8 +800,9 @@ func (k *keepalived) Cleanup() {
     cmds := []string { }
     for _, vip :=range k.vips{
         // insert new rules to the top
-        insertCmd :=  iptbl + " -t nat -D PREROUTING -d " + vip + " -j RETURN  -m comment --comment \"" + k.IgnoreKubeProxyKey + "\""
-        cmds = append( cmds, insertCmd )
+        delcmd := iptbl + " -t nat -nxvL PREROUTING --line | grep \""+ k.IgnoreKubeProxyKey
+        delcmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables -t nat -D PREROUTING"
+        cmds = append( cmds, delcmd)
     }
     for _,cmdStr := range cmds {
         err, outMsg, errMsg := execShellCommand( cmdStr )
