@@ -591,10 +591,11 @@ func (k *keepalived) MetricsSummary() ( summary metricsStruct, err error) {
     }
     summary.NodeName = info.MasterNodeName
     metricsData, err_m := k.Metrics()
-    summary.MetricsData = metricsData
     if err_m != nil {
+        summary.MetricsData = []vipMetrics{}
         return summary, err_m
     }
+    summary.MetricsData = metricsData
     vip_sums := []vipSummary{}
     for _, vip_port := range metricsData {
         index := -1 // idx of this vip in vip_sums[]
