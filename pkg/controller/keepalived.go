@@ -349,7 +349,22 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
     return nil
 }
 
-
+//====================================================
+//====================================================
+func (k *keepalived) KernelOptimize(set bool) {
+    cmdStr := "/optimize.sh"
+    if set {
+        cmdStr += " set"
+        glog.Infof("kernel optimization set...")
+    }else{
+        cmdStr += " unset"
+        glog.Infof("kernel optimization unset...")
+    }
+    err, outMsg, errMsg := execShellCommand( cmdStr )
+    if err != nil {
+        glog.Fatalf( "Error optimize kernel parameters (set=%v) : (%v): %v , stdout=%v, stderr=%v\n", set, cmdStr, err, outMsg, errMsg )
+    }
+}
 
 //====================================================
 // since LVS NAT mode doesn't do the SNAT by default, so here we set it up on host
@@ -411,6 +426,7 @@ func (k *keepalived) Start() {
 		glog.V(2).Infof("chain %v already existed", iptablesChain)
 	}
 
+
 	args := []string{"--dont-fork", "--log-console", "--log-detail"}
 	if k.releaseVips {
 		args = append(args, "--release-vips")
@@ -428,6 +444,7 @@ func (k *keepalived) Start() {
 
 	k.started = true
 
+    k.KernelOptimize(true)
     glog.Info("starting Setup SNAT iptables rules")
     k.CleanupIptablesSNAT(true) // cleanup first, to avoid dirty enviroment . Ignore failure
     k.SetupIptablesSNAT()
@@ -838,6 +855,7 @@ func (k *keepalived) Stop() {
 	if err != nil {
 		glog.Errorf("error stopping keepalived: %v", err)
 	}
+    k.KernelOptimize(false)
 }
 
 func (k *keepalived) removeVIP(vip string) {
