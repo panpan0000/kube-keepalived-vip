@@ -326,8 +326,8 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []l7endpoints) error {
     //Compare currentL7Eps and old record, to determine whether to update iptables
     for _, l7ep := range currentL7Eps {
         // insert new rules to the top
-        insertCmd_1 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --sport " +  strconv.Itoa(l7ep.HttpPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
-        insertCmd_2 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --sport " +  strconv.Itoa(l7ep.HttpsPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
+        insertCmd_1 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --dport " +  strconv.Itoa(l7ep.HttpPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
+        insertCmd_2 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --dport " +  strconv.Itoa(l7ep.HttpsPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
         cmds = append( cmds, insertCmd_1 )
         cmds = append( cmds, insertCmd_2 )
     }
