@@ -255,7 +255,7 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
     }
 
 
-    iptbl := " iptables-legacy "
+    iptbl := " iptables-legacy -w 2 "
     glog.Infof("Info: Detected changes in currentL4Vips:  old =%v, new =%v\n", k.previousL4Vips, currentL4Vips)
 
     for _,vip :=range removedIP {
@@ -322,7 +322,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
         glog.Info( "[Warning] removing old L7 exception iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
     }
     cmds := []string { }
-    iptbl := " iptables-legacy "
+    iptbl := " iptables-legacy -w 2 "
     //Compare currentL7Eps and old record, to determine whether to update iptables
     for _,ip :=range currentL7Eps {
         // insert new rules to the top
@@ -374,7 +374,7 @@ func (k *keepalived) SetupIptablesSNAT() {
 	// Q&A:
 	// Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
 	// A: Here we setup Legacy iptables rules instead of nf_table iptable
-	iptbl := " iptables-legacy "
+	iptbl := " iptables-legacy -w 2 " // wait 2 sec for xtables lock
 	targetCidr := "0.0.0.0/0"
     errPrefix := "Error setup iptables SNAT rules"
     cmdList := []string{
@@ -393,7 +393,7 @@ func (k *keepalived) SetupIptablesSNAT() {
 // delete the customized iptables chain which keepalived-vip container set up  on host 
 //====================================================
 func (k *keepalived) CleanupIptablesSNAT(igore_error bool) {
-	iptbl := " iptables-legacy "
+	iptbl := " iptables-legacy -w 2 "
 	glog.Infof("cleanup dnat iptables...        (igore_error=%v)",igore_error)
     errPrefix := "problem encountered when cleanup iptables SNAT rules"
 
@@ -806,15 +806,10 @@ func (k *keepalived) Healthy() error {
 }
 
 func (k *keepalived) Cleanup() {
-	glog.Infof("Cleanup: %s", k.vips)
-	for _, vip := range k.vips {
-		k.removeVIP(vip)
-	}
-
     k.CleanupIptablesSNAT(false)
 
     // Deleting the Ignore-Kube-Proxy Rules for L4 VIP
-    iptbl := " iptables-legacy "
+    iptbl := " iptables-legacy -w 2 "
     cmds := []string { }
     for _, vip :=range k.vips{
         // insert new rules to the top
@@ -845,17 +840,34 @@ func (k *keepalived) Cleanup() {
 	if err != nil {
 		glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
 	}
+
+    outp, err_chk := k8sexec.New().Command("/bin/bash", "-c", "rootfs/check_cleanup.sh >> /var/log/keepalived-cleanup.log").CombinedOutput()
+    if err_chk != nil{
+        glog.Info("Cleanup Check iptables : Error: [%s]", err_chk )
+    }else{
+        glog.Info("Cleanup Check iptables : %s", outp )
+    }
+
+	glog.Infof("Cleanup VIPs: %s", k.vips)
+	for _, vip := range k.vips {
+		k.removeVIP(vip)
+	}
+	glog.Infof("Cleanup VIP: %s", k.l7vip)
+    if k.l7vip != ""{
+        k.removeVIP(k.l7vip)
+    }
+
 }
 
 // Stop stop keepalived process
 func (k *keepalived) Stop() {
-	k.Cleanup()
 
+	k.KernelOptimize(false)
+	k.Cleanup()
 	err := syscall.Kill(k.cmd.Process.Pid, syscall.SIGTERM)
 	if err != nil {
 		glog.Errorf("error stopping keepalived: %v", err)
 	}
-    k.KernelOptimize(false)
 }
 
 func (k *keepalived) removeVIP(vip string) {
