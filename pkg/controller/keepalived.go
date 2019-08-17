@@ -287,7 +287,7 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
 //----------------------------------------------------
 // Update the L7 exception rules in iptables customized chain
 //---------------------------------------------------
-func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
+func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []l7endpoints) error {
 
 
     //FIXME, should check if rules missing. len(existing rule) == len(l7Vips)
@@ -297,7 +297,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
         for _, newIP := range currentL7Eps{
             thisIPChanged := true
             for _, oldIP := range k.l7eps {
-                if oldIP == newIP{
+                if oldIP == newIP.Ip{
                     thisIPChanged = false
                     break
                 }
@@ -324,10 +324,12 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
     cmds := []string { }
     iptbl := " iptables-legacy -w 2 "
     //Compare currentL7Eps and old record, to determine whether to update iptables
-    for _,ip :=range currentL7Eps {
+    for _, l7ep := range currentL7Eps {
         // insert new rules to the top
-        insertCmd :=  iptbl + " -t nat -I " + k.snatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
-        cmds = append( cmds, insertCmd )
+        insertCmd_1 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --sport " +  strconv.Itoa(l7ep.HttpPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
+        insertCmd_2 :=  iptbl + " -t nat -I " + k.snatChain + " -d " + l7ep.Ip + " -p tcp --sport " +  strconv.Itoa(l7ep.HttpsPort) + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
+        cmds = append( cmds, insertCmd_1 )
+        cmds = append( cmds, insertCmd_2 )
     }
     for _,cmdStr := range cmds {
         err, outMsg, errMsg := execShellCommand( cmdStr )
@@ -338,10 +340,11 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
     }
 
     // Copy new array to old
+    k.l7eps = nil
     k.l7eps= make( []string,len(currentL7Eps) )
-    n := copy( k.l7eps,  currentL7Eps )
-    if n != len(currentL7Eps) {
-        return fmt.Errorf("Error: Failed to copy currentL7Eps slices to k.l7eps, copied elements = %d\n", n)
+    //n := copy( k.l7eps,  currentL7Eps )
+    for _, ep := range currentL7Eps{
+        k.l7eps = append(k.l7eps, ep.Ip)
     }
 
 

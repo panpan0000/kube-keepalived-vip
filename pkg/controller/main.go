@@ -422,7 +422,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 		return fmt.Errorf("unexpected error searching global setup configmap %v/%v: %v", ns_gb, name_gb, err_ggb)
 	}
 
-	glog.V(2).Infof("ConfigMap Global =%v",cfgMap_gb)
+    //glog.V(2).Infof("ConfigMap Global =%v",cfgMap_gb)
 
     // get services config from service configMap
 	svcs := ipvsc.getServices(cfgMap_svc)
@@ -433,7 +433,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
         return fmt.Errorf("unexpected error getting global setting from configmap %v: %v",  ipvsc.configGlobalMapName, err_gs )
     }
 
-    glog.Infof("DEBUG globalSettings =  %v\n",globalSettings)
+    //glog.Infof("DEBUG globalSettings =  %v\n",globalSettings)
 
     // override global setting ,if service setting is blank
     for  i, svc := range svcs{
@@ -463,13 +463,14 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 	}
 
     //DCE Customized: Update the L7 Exception Rules in iptables
-    l7eps := []string{}
+    l7eps := []l7endpoints{}
     for _, l7ep := range globalSettings.L7Ep{
-        l7eps = append( l7eps, l7ep.Ip)
+        l7eps = append( l7eps, l7ep)
     }
     errL7Rule := ipvsc.keepalived.UpdateL7ExceptionRules( l7eps )
     if errL7Rule != nil{
         glog.Errorf("Error when UpdateL7ExceptionRules: %v", errL7Rule)
+        os.Exit(-5)
     }
 
     //DCE Customized: Update the L4 Ignore kube-proxy Rules in iptables
@@ -480,6 +481,7 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
     errL4Rule := ipvsc.keepalived.UpdateL4IgnoreRules( l4Vips )
     if errL4Rule != nil{
         glog.Errorf("Error when UpdateL4ExceptionRules: %v", errL4Rule)
+        os.Exit(-6)
     }
 
 
