@@ -28,7 +28,7 @@ for vrid in ${VRIDS[@]};do
     "ip rule | grep \"from all fwmark\"|grep \"lookup $vrid\""
     "ip route show table $vrid"
     "iptables -t mangle -nxvL OUTPUT |grep \"ingress routing rule for LB($vrid) ipvs NAT mode\""
-    "iptables -t nat -nxvL|grep DCE_L4_DNAT_CHAIN_$vrid"
+    "iptables -t nat -nxvL|grep DCE_L4_SNAT_CHAIN_$vrid"
     "iptables -t nat -nxvL|grep DCE_L7_EXCEPTION_RULES_$vrid"
    )
 done

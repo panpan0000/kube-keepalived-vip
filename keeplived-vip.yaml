@@ -139,7 +139,7 @@ spec:
             -  --iface=ens192
             -  --http-port=8081
             -  --metrics-port=8082
-            -  --add-iptables-dnat=true
+            -  --add-iptables-snat=true
             -  --clear-previous-ipvs=false
             -  --vrid=78
             # unicast uses the ip of the nodes instead of multicast

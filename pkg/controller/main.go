@@ -175,7 +175,7 @@ type ipvsControllerController struct {
 
 	stopCh chan struct{}
 
-    willAddDNAT bool
+    willAddSNAT bool
 
     muxMetrics *http.ServeMux
     muxHealth *http.ServeMux
@@ -577,7 +577,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, metricsPort int, releaseVips bool, willAddDNAT bool ) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, metricsPort int, releaseVips bool, willAddSNAT bool ) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
@@ -586,7 +586,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		httpPort:          httpPort,
         metricsPort:       metricsPort,
 		stopCh:            make(chan struct{}),
-        willAddDNAT:       willAddDNAT,
+        willAddSNAT:       willAddSNAT,
 	}
 
     ipvsc.muxMetrics = http.NewServeMux()
@@ -620,8 +620,8 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 	execer := utilexec.New()
 	dbus := utildbus.New()
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
-    dnatChainName := fmt.Sprintf("DCE_L4_DNAT_CHAIN_%d",vrid)
-    dnatExceptionKeyName := fmt.Sprintf("DCE_L7_EXCEPTION_RULES_%d",vrid)
+    snatChainName := fmt.Sprintf("DCE_L4_SNAT_CHAIN_%d",vrid)
+    snatExceptionKeyName := fmt.Sprintf("DCE_L7_EXCEPTION_RULES_%d",vrid)
     IgnoreKubeProxyKeyName := fmt.Sprintf("DCE_L4_IGNORE_KUBE_PROXY_FOR_VIP_RULES_%d",vrid)
 	ipvsc.keepalived = &keepalived{
 		iface:       iface,
@@ -636,8 +636,8 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		proxyMode:   proxyMode,
 		notify:     notify,
 		releaseVips: releaseVips,
-        dnatChain : dnatChainName,
-        dnatExceptionKey: dnatExceptionKeyName,
+        snatChain : snatChainName,
+        snatExceptionKey: snatExceptionKeyName,
         IgnoreKubeProxyKey: IgnoreKubeProxyKeyName,
     }
 

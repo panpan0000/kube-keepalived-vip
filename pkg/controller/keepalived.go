@@ -122,8 +122,8 @@ type keepalived struct {
 	proxyMode      bool
 	notify         string
 	releaseVips    bool
-	dnatChain      string
-    dnatExceptionKey string
+	snatChain      string
+    snatExceptionKey string
     l7eps         []string
     IgnoreKubeProxyKey string
     previousL4Vips []string
@@ -261,7 +261,7 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
     for _,vip :=range removedIP {
         removeOldRulesCmd := iptbl + " -t nat -nxvL PREROUTING --line | grep \""+ k.IgnoreKubeProxyKey
         removeOldRulesCmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables -t nat -D PREROUTING"
-        // remove old rules matched the comments "$k.dnatExceptionKey"
+        // remove old rules matched the comments "$k.snatExceptionKey"
         errRev, _, errMsgRev := execShellCommand(removeOldRulesCmd)
         if errRev != nil {
             glog.Info( "[Warning] removing old L4 ignore kube-proxy iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
@@ -315,7 +315,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
 
 
 
-    removeOldRulesCmd := "iptables-legacy-save | grep -v " +  k.dnatExceptionKey + " | iptables-legacy-restore " // remove old rules matched the comments "$k.dnatExceptionKey"
+    removeOldRulesCmd := "iptables-legacy-save | grep -v " +  k.snatExceptionKey + " | iptables-legacy-restore " // remove old rules matched the comments "$k.snatExceptionKey"
 
     errRev, _, errMsgRev := execShellCommand( removeOldRulesCmd )
     if errRev != nil {
@@ -326,7 +326,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []string ) error {
     //Compare currentL7Eps and old record, to determine whether to update iptables
     for _,ip :=range currentL7Eps {
         // insert new rules to the top
-        insertCmd :=  iptbl + " -t nat -I " + k.dnatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.dnatExceptionKey + "\""
+        insertCmd :=  iptbl + " -t nat -I " + k.snatChain + " -d " + ip + " -j RETURN  -m comment --comment \"" + k.snatExceptionKey + "\""
         cmds = append( cmds, insertCmd )
     }
     for _,cmdStr := range cmds {
@@ -370,7 +370,7 @@ func (k *keepalived) KernelOptimize(set bool) {
 // since LVS NAT mode doesn't do the SNAT by default, so here we set it up on host
 //====================================================
 func (k *keepalived) SetupIptablesSNAT() {
-    glog.Infof("set up dnat iptables...     ")
+    glog.Infof("set up snat iptables...     ")
 	// Q&A:
 	// Q: Why not using k8s.io/kubernetes/pkg/util/iptables?
 	// A: Here we setup Legacy iptables rules instead of nf_table iptable
@@ -378,9 +378,9 @@ func (k *keepalived) SetupIptablesSNAT() {
 	targetCidr := "0.0.0.0/0"
     errPrefix := "Error setup iptables SNAT rules"
     cmdList := []string{
-        iptbl + "-t nat -N " + k.dnatChain, // 1.create a new customized chain
-        iptbl + "-t nat -A " + k.dnatChain + " -d " + targetCidr + " -j MASQUERADE" ,// 2. add a rule , SNAT all
-        iptbl + "-t nat -I POSTROUTING -j " + k.dnatChain, // 3. add this custmized chain to the top of POSTROUTING chain
+        iptbl + "-t nat -N " + k.snatChain, // 1.create a new customized chain
+        iptbl + "-t nat -A " + k.snatChain + " -d " + targetCidr + " -j MASQUERADE" ,// 2. add a rule , SNAT all
+        iptbl + "-t nat -I POSTROUTING -j " + k.snatChain, // 3. add this custmized chain to the top of POSTROUTING chain
     }
     for _,cmdStr := range cmdList {
         err, outMsg, errMsg := execShellCommand( cmdStr )
@@ -394,13 +394,13 @@ func (k *keepalived) SetupIptablesSNAT() {
 //====================================================
 func (k *keepalived) CleanupIptablesSNAT(igore_error bool) {
 	iptbl := " iptables-legacy -w 2 "
-	glog.Infof("cleanup dnat iptables...        (igore_error=%v)",igore_error)
+	glog.Infof("cleanup snat iptables...        (igore_error=%v)",igore_error)
     errPrefix := "problem encountered when cleanup iptables SNAT rules"
 
     cmdList := []string{
-        iptbl + "-t nat -D POSTROUTING -j " + k.dnatChain, // remove chain from POSTROUTING
-	    iptbl + "-t nat -F " + k.dnatChain,  // flush chain
-	    iptbl + "-t nat -X " + k.dnatChain,  // delete chain
+        iptbl + "-t nat -D POSTROUTING -j " + k.snatChain, // remove chain from POSTROUTING
+	    iptbl + "-t nat -F " + k.snatChain,  // flush chain
+	    iptbl + "-t nat -X " + k.snatChain,  // delete chain
     }
     for _,cmdStr := range cmdList {
         err, outMsg, errMsg := execShellCommand( cmdStr )
