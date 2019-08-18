@@ -844,7 +844,7 @@ func (k *keepalived) Cleanup() {
 		glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
 	}
 
-    outp, err_chk := k8sexec.New().Command("/bin/bash", "-c", "rootfs/check_cleanup.sh >> /var/log/keepalived-cleanup.log").CombinedOutput()
+    outp, err_chk := k8sexec.New().Command("/bin/bash", "-c", "\"/check_cleanup.sh >> /var/log/keepalived-cleanup.log\"").CombinedOutput()
     if err_chk != nil{
         glog.Info("Cleanup Check iptables : Error: [%s]", err_chk )
     }else{
