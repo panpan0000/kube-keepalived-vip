@@ -31,6 +31,7 @@ for vrid in ${VRIDS[@]};do
     "$iptl -t mangle -nxvL OUTPUT |grep \"ingress routing rule for LB($vrid) ipvs NAT mode\""
     "$iptl -t nat -nxvL|grep DCE_L4_SNAT_CHAIN_$vrid"
     "$iptl -t nat -nxvL|grep DCE_L7_EXCEPTION_RULES_$vrid"
+    "$iptl -t nat -nxvL PREROUTING |grep DCE_L4_IGNORE_KUBE_PROXY_FOR_VIP_RULES_$vrid"
    )
 done
 for vip in ${VIPS[@]};do
