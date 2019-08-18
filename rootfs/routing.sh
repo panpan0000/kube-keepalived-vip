@@ -162,7 +162,7 @@ unlock()            { _lock u; }   # drop a lock
 ################################################################
 
 
-clog "---------begin-----------"
+clog "---------begin---($VIP)--------"
 exlock
 clog "---------get-the-lock-----------"
 if [ x"$Operation" == x"BACKUP" ] ; then
@@ -192,5 +192,5 @@ else
 fi
 
 
-clog "---------done-----------"
+clog "---------done--($VIP)---------"
 exit 0

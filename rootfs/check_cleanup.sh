@@ -22,21 +22,22 @@ check_output_blank(){
 
 }
 check_commands=()
+iptl="iptables-legacy"
 for vrid in ${VRIDS[@]};do
    echo "vrid=$vrid"
    check_commands+=(
     "ip rule | grep \"from all fwmark\"|grep \"lookup $vrid\""
     "ip route show table $vrid"
-    "iptables -t mangle -nxvL OUTPUT |grep \"ingress routing rule for LB($vrid) ipvs NAT mode\""
-    "iptables -t nat -nxvL|grep DCE_L4_SNAT_CHAIN_$vrid"
-    "iptables -t nat -nxvL|grep DCE_L7_EXCEPTION_RULES_$vrid"
+    "$iptl -t mangle -nxvL OUTPUT |grep \"ingress routing rule for LB($vrid) ipvs NAT mode\""
+    "$iptl -t nat -nxvL|grep DCE_L4_SNAT_CHAIN_$vrid"
+    "$iptl -t nat -nxvL|grep DCE_L7_EXCEPTION_RULES_$vrid"
    )
 done
-#for vip in ${VIPS[@]};do
-#   echo "vip=$vip"
-#   check_commands+=("ipvsadm -Ln |grep $vip")
-#   check_commands+=("ip a |grep $vip")
-#done
+for vip in ${VIPS[@]};do
+    echo "vip=$vip"
+    #check_commands+=("ipvsadm -Ln |grep $vip")
+    #check_commands+=("ip a |grep $vip")
+done
 
 echo "===$(date)==Clean up Check for VIPS=${VIPS[@]} , vrid = ${VRIDS[@]}"
 for ((i = 0; i < ${#check_commands[@]}; i++)); do
