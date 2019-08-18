@@ -277,6 +277,8 @@ func parseL4Config(input string) ( svcConfig, error) {
         k := kv[0]
         v := kv[1]
         switch {
+        case k =="":
+            continue;
         case k =="service":
             nsSvc := strings.Split( v ,"/")
             if len(nsSvc) != 2 {
