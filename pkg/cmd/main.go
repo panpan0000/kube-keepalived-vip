@@ -51,6 +51,8 @@ var (
 
 	useUnicast = flags.Bool("use-unicast", false, `use unicast instead of multicast for communication
 		with other keepalived instances`)
+	useIpvsadmDaemon = flags.Bool("use-ipvsadm-daemon", false, `use ipvsadm daemon to sync the connection data`)
+
 
 	configMapSvcName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
@@ -127,6 +129,11 @@ func main() {
 		glog.Info("keepalived will use unicast to sync the nodes")
 	}
 
+	if *useIpvsadmDaemon {
+		glog.Info("keepalived will use IpvsadmDaemon to sync ipvs connection data.")
+	}
+
+
 	if *vrid < 0 || *vrid > 255 {
 		glog.Fatalf("Error using VRID %d, only values between 0 and 255 are allowed.", vrid)
 	}
@@ -150,7 +157,7 @@ func main() {
 	}
 
 	glog.Info("starting LVS configuration")
-	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *metricsPort, *releaseVips, *willAddSNAT)
+	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *useIpvsadmDaemon, *configMapSvcName, *configMapGlobalName, *vrid, *proxyMode, *iface, *httpPort, *metricsPort, *releaseVips, *willAddSNAT)
     if *clearIpvsFirst {
         // If kube-proxy running in ipvs mode
         // Reset of IPVS lead to connection loss with API server

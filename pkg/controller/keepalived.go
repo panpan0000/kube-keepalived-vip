@@ -106,6 +106,7 @@ type vipMetrics struct {
 type keepalived struct {
 	iface          string
 	ip             string
+    useIpvsadmDaemon bool
 	netmask        int
 	priority       int
 	nodes          []string
@@ -153,6 +154,7 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 	conf["vips"] = k.vips
 	conf["nodes"] = k.neighbors
 	conf["priority"] = k.priority
+    conf["useIpvsadmDaemon"] = k.useIpvsadmDaemon
 	conf["useUnicast"] = k.useUnicast
 	conf["vrid"] = k.vrid
 	conf["proxyMode"] = k.proxyMode

@@ -579,7 +579,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, metricsPort int, releaseVips bool, willAddSNAT bool ) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, useIpvsadmDaemon bool, configSvcMapName string, configGlobalMapName string, vrid int, proxyMode bool, iface string, httpPort int, metricsPort int, releaseVips bool, willAddSNAT bool ) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
@@ -633,6 +633,7 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		neighbors:   neighbors,
 		priority:    getNodePriority(nodeInfo.ip, clusterNodes),
 		useUnicast:  useUnicast,
+        useIpvsadmDaemon: useIpvsadmDaemon,
 		ipt:         iptInterface,
 		vrid:        vrid,
 		proxyMode:   proxyMode,

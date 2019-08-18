@@ -141,6 +141,7 @@ spec:
             -  --metrics-port=8082
             -  --add-iptables-snat=true
             -  --clear-previous-ipvs=false
+            - --use-ipvsadm-daemon=false
             -  --vrid=78
             # unicast uses the ip of the nodes instead of multicast
             # this is useful if running in cloud providers (like AWS)

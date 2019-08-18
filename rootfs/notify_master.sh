@@ -9,5 +9,5 @@ INGRESS_HTTPPORT=$5
 INGRESS_HTTPSPORT=$6
 echo "Switch to master"
 /routing.sh MASTER $VRID_L4 $L7VIP $IFACE $INGRESS_HTTPPORT $INGRESS_HTTPSPORT
-#/ipvsadm_daemon_master.sh ${VRID_L7} ${IFACE} 2>&1 >> /var/log/keepalived-notify_${VRID_L4}.log
+#/ipvsadm_daemon_master.sh ${VRID_L4} ${IFACE} 2>&1 >> /var/log/keepalived-notify_${VRID_L4}.log
 
