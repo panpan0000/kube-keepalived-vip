@@ -169,7 +169,7 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 
 	conf["l7vipIsEmpty"] = len(settings.L7VIP) == 0
 	conf["vrid_ingress"] = k.vrid + 1
-	conf["priority_ingress"] = 200 - k.priority
+	conf["priority_ingress"] = 1000 - k.priority // k.priority is 100 + nodeIndex, assume we will not have >= 900 nodes.
 	conf["L7VIP"] = settings.L7VIP
 	conf["L7HttpPort"] = settings.L7HttpPort
 	conf["L7HttpsPort"] = settings.L7HttpsPort
@@ -264,7 +264,7 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
         // remove old rules matched the comments "$k.snatExceptionKey"
         errRev, _, errMsgRev := execShellCommand(removeOldRulesCmd)
         if errRev != nil {
-            glog.Info( "[Warning] removing old L4 ignore kube-proxy iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
+            glog.Infof( "[Warning] removing old L4 ignore kube-proxy iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
         }
     }
     for _,ip :=range newlyAddIP {
@@ -319,7 +319,7 @@ func (k *keepalived) UpdateL7ExceptionRules( currentL7Eps []l7endpoints) error {
 
     errRev, _, errMsgRev := execShellCommand( removeOldRulesCmd )
     if errRev != nil {
-        glog.Info( "[Warning] removing old L7 exception iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
+        glog.Infof( "[Warning] removing old L7 exception iptables rule failure(maybe just start up): (%v): %v  stderr=%v\n", removeOldRulesCmd, errRev, errMsgRev )
     }
     cmds := []string { }
     iptbl := " iptables-legacy -w 2 "
@@ -844,11 +844,11 @@ func (k *keepalived) Cleanup() {
 		glog.V(2).Infof("unexpected error flushing iptables chain %v: %v", err, iptablesChain)
 	}
 
-    outp, err_chk := k8sexec.New().Command("/bin/bash", "-c", "\"/check_cleanup.sh >> /var/log/keepalived-cleanup.log\"").CombinedOutput()
+    outp, err_chk := k8sexec.New().Command("/check_cleanup.sh", " >>" , "/var/log/keepalived-cleanup.log").CombinedOutput()
     if err_chk != nil{
-        glog.Info("Cleanup Check iptables : Error: [%s]", err_chk )
+        glog.Infof("Cleanup Check iptables : Error: [%s] [%s]", err_chk, outp )
     }else{
-        glog.Info("Cleanup Check iptables : %s", outp )
+        glog.Infof("Cleanup Check iptables : %s", outp )
     }
 
 	glog.Infof("Cleanup VIPs: %s", k.vips)
