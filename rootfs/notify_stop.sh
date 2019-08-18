@@ -1,9 +1,8 @@
 #!/bin/bash
 
-VRID=$1
+VRID_L4=$1
+VRID_L7=$2
 
-/routing.sh unset $VRID
-ipvsadm --stop-daemon master
-ipvsadm --stop-daemon backup
-
+/routing.sh unset $VRID_L4
+#/ipvsadm_daemon_stop.sh >> /var/log/keepalived-notify_${VRID_L7}.log
 
