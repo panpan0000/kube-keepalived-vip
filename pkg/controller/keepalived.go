@@ -171,7 +171,7 @@ func (k *keepalived) WriteCfg(svcs []vip, settings globalSetting ) error {
 
 	conf["l7vipIsEmpty"] = len(settings.L7VIP) == 0
 	conf["vrid_ingress"] = k.vrid + 1
-	conf["priority_ingress"] = 1000 - k.priority // k.priority is 100 + nodeIndex, assume we will not have >= 900 nodes.
+	conf["priority_ingress"] = 100 - (k.priority % 100) // k.priority is 100 + nodeIndex
 	conf["L7VIP"] = settings.L7VIP
 	conf["L7HttpPort"] = settings.L7HttpPort
 	conf["L7HttpsPort"] = settings.L7HttpsPort
