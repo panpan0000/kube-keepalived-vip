@@ -46,9 +46,9 @@ global_defs {
 # HTTP
     virtual_server {{ $L7VIP }} {{ .L7HttpPort }} {
         delay_loop 5
-        lvs_sched wlc
+        lvs_sched rr
         lvs_method NAT
-        persistence_timeout 60
+        persistence_timeout 0
         protocol TCP
 
         {{ range $i, $ep := .l7eps }}
