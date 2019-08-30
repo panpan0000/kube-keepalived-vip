@@ -31,7 +31,7 @@ LOG_FILE="/var/log/keepalived-notify_${LB_ID}.log"
 COMMENT_HTTP="http : ingress routing rule for LB($LB_ID) ipvs NAT mode"
 COMMENT_HTTPS="https : ingress routing rule for LB($LB_ID) ipvs NAT mode"
 
-iptables="iptables-legacy"
+iptables="iptables-legacy -w 2 "
 
 
 _SCRIPT_FILENAME_=`basename $0`

@@ -262,7 +262,7 @@ func (k *keepalived) UpdateL4IgnoreRules( currentL4Vips []string ) error {
 
     for _,vip :=range removedIP {
         removeOldRulesCmd := iptbl + " -t nat -nxvL PREROUTING --line | grep \""+ k.IgnoreKubeProxyKey
-        removeOldRulesCmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables-legacy -t nat -D PREROUTING"
+        removeOldRulesCmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables-legacy -w 2 -t nat -D PREROUTING"
         // remove old rules matched the comments "$k.snatExceptionKey"
         errRev, _, errMsgRev := execShellCommand(removeOldRulesCmd)
         if errRev != nil {
@@ -819,7 +819,7 @@ func (k *keepalived) Cleanup() {
     for _, vip :=range k.vips{
         // insert new rules to the top
         delcmd := iptbl + " -t nat -nxvL PREROUTING --line | grep \""+ k.IgnoreKubeProxyKey
-        delcmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables-legacy -t nat -D PREROUTING"
+        delcmd += "\" | grep " + vip + " | awk '{print $1}'|head -n1|xargs iptables-legacy -w 2 -t nat -D PREROUTING"
         cmds = append( cmds, delcmd)
     }
     for _,cmdStr := range cmds {
